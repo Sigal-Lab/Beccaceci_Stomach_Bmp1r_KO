@@ -1,0 +1,80 @@
+---
+title: "Microarray Data - Bmpr1a KO - Final Volcano plot"
+author: "Hilmar Berger"
+output: 
+ html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: false
+    number_sections: true
+    code_folding: hide
+    
+pdf_document:
+    fig_caption: true
+date: "`r format(Sys.time(), '%d %B, %Y %H:%M:%S')`"
+---
+
+```{r, messages=FALSE}
+rm(list=ls())
+library(limma)
+library(readxl)
+library(pheatmap)
+library(xtable)
+library(reshape2)
+library(knitr)
+library(writexl)
+library(EnhancedVolcano)
+library(data.table)
+
+#load("../../Data/Processed/Micro_array_preprocessed_data.Rdata")
+
+result_folder = "../../Results"
+if (!file.exists(result_folder)) dir.create(result_folder, recursive=T)
+```
+
+```{r}
+
+filename = paste(result_folder,"DGE_results.Rdata",sep="/")
+load(filename)
+```
+
+
+## Volcano plots
+
+Due to the small replicate number no genes in any of the comparisons reached a significance level of FDR < 5%. We here therefore show unadjusted (raw) p-values noting that **a large part or all of them might be false positive calls**.
+
+The raw p-value threshold is 0.001. We only keep the probe with the significant one with highest absolute value or (if none is significant) the one with highest absolute log2FC overall. We also exclude probes mapping to multiple genes. 
+
+```{r, volcano, fig.width=8, fig.height=6}
+all_target_conditions = names(all_results)
+par(mfrow=c(1,1), mar=c(8,4,4,2))
+
+sel_genes = "Cxcl2,Cxcl10,S100a8,Cxcl6,Ccl20,Il1b,S100a9,Il1a,Il6,Ccl2,C4b,C3" |> strsplit(",") |> unlist()
+
+
+get_max_fc <- function(x) {
+  tmp <- x
+  tmp$psig <- tmp$P.Value < 0.001
+  setorder(tmp, -psig, -abs_lfc)
+  tmp[1, ]$abs_lfc
+}
+
+for (tc in all_target_conditions) {
+  r = all_results[[tc]] |> as.data.table()
+  r <- r[r$GencodeM22MappingStatus %in% c("unique gene,perfect match", "no perfect matching probe") & !is.na(r$GeneSymbol) & r$GeneSymbol != ""]
+  r$abs_lfc <- abs(r$logFC)
+  r[, max_sign_lfc := get_max_fc(.SD), by="GeneSymbol"]
+  
+  r2 <- r[r$max_sign_lfc == r$abs_lfc]
+  
+  p = EnhancedVolcano(r2, lab=r2$GeneSymbol, x="logFC", y="P.Value", pCutoff = 0.001, 
+                        selectLab = sel_genes, max.overlaps=Inf, drawConnectors = T, subtitle = "")
+  print(p)
+}
+```
+
+
+# Session Info
+```{r}
+sessionInfo()
+```
