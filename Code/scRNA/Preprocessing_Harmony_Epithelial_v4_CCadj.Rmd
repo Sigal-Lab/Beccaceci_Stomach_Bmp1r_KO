@@ -1,0 +1,260 @@
+---
+title: "Giulia Beccaceci scRNA from stromal Il1r1 KO and epithelial Bmpr1a KO models - Preprocessing of epithelial cells only"
+author: "Hilmar Berger"
+output: 
+ html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: false
+    number_sections: true
+    code_folding: hide
+    
+pdf_document:
+    fig_caption: true
+date: "`r format(Sys.time(), '%d %B, %Y %H:%M:%S')`"
+---
+
+```{r, message=FALSE}
+library(Seurat)
+#library(SeuratDisk)
+library(ggplot2)
+
+library(readxl)
+library(knitr)
+library(data.table)
+library(cowplot)
+library(magrittr)
+
+library(harmony)
+
+library(homologene)
+
+library(pheatmap)
+
+library(plotly)
+
+library(future)
+plan("multicore", workers = 10)
+options(future.globals.maxSize = 10*2**32)
+
+data_storage_folder = file.path("../../Data/scRNA/Processed")
+if (!file.exists(data_storage_folder)) dir.create(data_storage_folder, recursive=T)
+
+set.seed(20230829)
+
+```
+
+We keep only cells from epithelial cells that were not marked as doublets. 
+
+```{r}
+reload_data = F
+if(reload_data) {
+  load(file.path(data_storage_folder, "All_Filtered_scData.Rdata"))
+  
+  meta <- readRDS(file=file.path(data_storage_folder, "Giulia_Il1r1_Bmpr1a_Harmony_Metadata.rds"))
+  
+  all_ge_data_filtered@meta.data <- meta[Cells(all_ge_data_filtered),]
+  
+  good_cells <- subset(meta, cluster_type=="Epithelial" & doublet=="singlet" & !grepl("decaying", cluster_label, ignore.case = T))
+  all_ge_data_filtered <- subset(all_ge_data_filtered, cells = rownames(good_cells))
+  all_ge_data_filtered$cluster_label <- droplevels(all_ge_data_filtered$cluster_label)
+}
+```
+
+# Cluster counts from global clustering
+
+```{r}
+if(reload_data) {
+  table(all_ge_data_filtered$cluster_label, all_ge_data_filtered$sampleID)
+}  
+```
+
+
+# Cell Cycle estimation
+
+```{r}
+cc_estimate_file = file.path(data_storage_folder, "Giulia_epi_only_CellCycle_estimated.rds")
+if(reload_data) {
+
+  scData = all_ge_data_filtered
+  scData <- NormalizeData(object = scData, normalization.method = "LogNormalize", scale.factor = 1e4)
+  scData <- FindVariableFeatures(object = scData, selection.method = "vst")
+  scData <- ScaleData(object = scData, features = rownames(scData))
+
+  scData <- RunPCA(scData, features = VariableFeatures(scData), ndims.print = c(1:20), nfeatures.print = 20)
+
+  mouse.cc.genes = lapply(cc.genes.updated.2019, function(x) unique(human2mouse(x, db = homologeneData2)$mouseGene))
+  #scData <- CellCycleScoring(scData, s.features = s.genes, g2m.features = g2m.genes, set.ident = TRUE)
+  scData <- CellCycleScoring(scData, s.features = mouse.cc.genes$s.genes, g2m.features = mouse.cc.genes$g2m.genes, set.ident = TRUE)
+
+  cc_tab = scData@meta.data[, c("Phase","S.Score","G2M.Score", "orig.ident")]
+  #rm(scData)
+  #gc()
+  saveRDS(cc_tab, file=cc_estimate_file, compress = T)
+} else {
+  cc_tab = readRDS(cc_estimate_file)
+}
+```
+
+
+
+```{r}
+# view cell cycle scores and phase assignments
+boxplot(cc_tab$S.Score ~ cc_tab$Phase)
+boxplot(cc_tab$G2M.Score ~ cc_tab$Phase)
+
+m = table(cc_tab$Phase, cc_tab$orig.ident)
+kable(m)
+
+tmp = as.matrix.data.frame(m)
+colnames(tmp) = colnames(m)
+rownames(tmp) = rownames(m)
+mr = sweep(tmp, 2, apply(tmp,2,sum),"/")
+kable(round(mr,2))
+
+pheatmap(mr, scale="none", main="Relative contributions of cell cycle phases per sample", breaks=seq(0,1,by=0.01))
+```
+
+
+
+We here use standard normalization followed by batch integration using Harmony (without adjusting for cell cycle or MT content). 
+
+```{r}
+if(reload_data) {
+  combined_sc_data <- NormalizeData(object = all_ge_data_filtered, normalization.method = "LogNormalize", scale.factor = 1e4)
+  combined_sc_data <- FindVariableFeatures(object = combined_sc_data, selection.method = "vst")
+}
+```
+
+```{r}
+if(reload_data) {
+  # restrict variable features to those variable within WT untreated samples  
+  tmp <- subset(combined_sc_data, group %in% c("Stromal IL1r1 WT uninfected","epiBmpr1aWT uninfected"))
+  tmp <- FindVariableFeatures(object = tmp, selection.method = "vst")
+  tmp_var <- VariableFeatures(tmp)
+  combined_sc_data@meta.data$S.Score <- cc_tab[match(Cells(combined_sc_data), rownames(cc_tab)), "S.Score"]
+  combined_sc_data@meta.data$G2M.Score <- cc_tab[match(Cells(combined_sc_data), rownames(cc_tab)), "G2M.Score"]  
+  combined_sc_data <- ScaleData(object = combined_sc_data, features = tmp_var, vars.to.regress = c("S.Score","G2M.Score"))
+  combined_sc_data <- RunPCA(combined_sc_data, verbose = FALSE, features = tmp_var)
+  combined_sc_data <- RunHarmony(object = combined_sc_data,
+                                    reduction.use = "pca",
+                                    dims.use = 1:50,
+                                    group.by.vars = "orig.ident",
+                                    plot_convergence = TRUE)
+  combined_sc_data <- RunUMAP(combined_sc_data, reduction = "harmony", dims = 1:15, verbose = FALSE)
+  combined_sc_data <- RunUMAP(combined_sc_data, reduction = "harmony", dims = 1:15, verbose = FALSE, reduction.name = "umap3", n.components = 3 )
+  combined_sc_data <- FindNeighbors(combined_sc_data, reduction = "harmony", dims = 1:15)
+  combined_sc_data <- FindClusters(combined_sc_data, resolution = 0.65)
+  scData.combined = combined_sc_data
+}
+```
+
+
+```{r} 
+preprocessed_data_file = file.path(data_storage_folder, "Giulia_Il1r1_Bmpr1a_Harmony_Epi_only_v4_CCadj.rds")
+if(reload_data) {
+  saveRDS(scData.combined, file=preprocessed_data_file, compress = T)
+} else {
+  scData.combined <- readRDS(preprocessed_data_file)
+}
+```
+
+
+# Global clusters
+
+```{r, fig.width=14, fig.height=6}
+scData.combined <- SetIdent(scData.combined, value="seurat_clusters")
+DimPlot(scData.combined, reduction = "umap", group.by = "orig.ident", raster = T)
+
+p1 <- DimPlot(scData.combined, reduction = "umap", group.by = c("genotype", "tissue_type"), raster=T)
+p2 <- DimPlot(scData.combined, reduction = "umap", label = TRUE, raster=T)
+plot_grid(p1, p2)
+
+DimPlot(scData.combined, reduction = "umap", split.by = "orig.ident", label = T, raster=T)
+DimPlot(scData.combined, reduction = "umap", group.by="cluster_label", label = T, raster=T)
+```
+
+
+```{r}
+d <- as.data.frame(scData.combined@reductions$umap3@cell.embeddings)
+d <- merge(d, scData.combined@meta.data, by=0, all.x=T, sort=F)
+fig <-  plot_ly(data = d ,x =  ~umap3_1, y = ~umap3_2, z = ~umap3_3, marker = list(size = 3) ) %>% 
+  add_markers(color = ~cluster_label) %>%
+  layout( 
+    xaxis = list(
+      zerolinecolor = "#ffff",
+      zerolinewidth = 2,
+      gridcolor='#ffff'), 
+    yaxis = list(
+      zerolinecolor = "#ffff",
+      zerolinewidth = 2,
+      gridcolor='#ffff'),
+    scene =list(bgcolor = "#e5ecf6"),
+    legend=list(itemsizing = "constant"))
+fig
+
+fig <-  plot_ly(data = d ,x =  ~umap3_1, y = ~umap3_2, z = ~umap3_3,  marker = list(size = 1)) %>% 
+  add_markers(color = ~group) %>%
+  layout( 
+    xaxis = list(
+      zerolinecolor = "#ffff",
+      zerolinewidth = 2,
+      gridcolor='#ffff'), 
+    yaxis = list(
+      zerolinecolor = "#ffff",
+      zerolinewidth = 2,
+      gridcolor='#ffff'),
+    scene =list(bgcolor = "#e5ecf6"),
+    legend=list(itemsizing = "constant"))
+fig
+
+```
+
+## Cluster assignments
+
+```{r}
+m = table(scData.combined@meta.data$seurat_clusters, scData.combined@meta.data$orig.ident)
+kable(m)
+```
+
+
+```{r, fig.height=6, fig.width=12}
+mm = as.matrix.data.frame(m)
+colnames(mm) = colnames(m)
+rownames(mm) = rownames(m)
+mm_rel = sweep(mm, 2, apply(mm, 2,sum), "/")
+pheatmap(mm_rel, main="Relative single cell contribution of each cluster to condition totals")
+```
+
+
+# Global cluster labels
+
+```{r}
+table(scData.combined$cluster_label, scData.combined$seurat_clusters)
+```
+
+
+## Global markers
+
+```{r, fig.width=14, fig.height=6}
+
+sel_markers=c("Ptprc","Tcrb","Ly6g","Pglyrp1","Cd4","Cd3e","Cd3d","Cd3g", "Gata3","Cxcr6","Rora","Cd7","Cd8a","Cd19","Ms4a1","Ly6a", "Cd34","Procr","Fgd5","Hoxb5","Epor","Slamf1", "Vim","Epcam","Pecam1","Lyve1","Vwf","Mki67")
+DefaultAssay(scData.combined) <- "RNA"
+
+DotPlot(scData.combined, sel_markers, cols = "RdYlBu", assay = "RNA", scale=T) + theme(axis.text.x=element_text(angle=45, hjust = 1))
+
+```
+
+
+
+```{r, fig.width=10, fig.height=5}
+VlnPlot(scData.combined, features = c("nFeature_RNA", "percent_mito"))
+```
+
+
+# Software versions
+
+```{r}
+sessionInfo()
+```
+

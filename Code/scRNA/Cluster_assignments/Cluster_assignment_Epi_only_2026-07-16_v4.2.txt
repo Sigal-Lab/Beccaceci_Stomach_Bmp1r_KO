@@ -1,0 +1,17 @@
+ClusterID	Type	Label	Markers
+0	Epithelial	Stem antral	Lgr5,Aqp5,Muc6,Cldn2
+1	Epithelial	TA/Progenitor antral	Mki67,Stmn1,Muc4; Pdx1
+2	Epithelial	Pit/Surface mucous antral	Muc5ac,Krt20,Sptssb
+3	Epithelial	Pit corpus	Muc5ac,Aldh3a1,Sctr
+4	Epithelial	TA/Progenitor antral	Top2a, Prc1, H1f1,H1f5,Mki67,Mcm3
+5	Epithelial	Chief cell	Pla2g1g, Pga5,Pgc,Cblif,Chia1,Gper1,Mist1
+6	Epithelial	TA/Progenitor corpus	Pdx1 low; Mki67
+7	Epithelial	G-cell	GAST,Chgb,Grpr
+8	Epithelial	Tuft	Dclk1,Lgr5,Ascl2
+9	Epithelial	EC-like cell	Chga,Hdc,Maoa/b; Aqp8,Car4,Tff3; Vtn,Gc 
+10	Epithelial	EEC Sst	Sst
+11	Epithelial	EE-Pro/EC cell	Tph1,Sox2,Chgb,Tac1; Neurog3,Olfm1
+12	Epithelial	Pit stressed	high Mt, low UMI count
+13	Epithelial	EEC Chga	Neurod1,Arx,Scgn,Zcchc12
+14	Epithelial	Parietal	Atp4a/b,Vegfb
+15	Epithelial	Squamous	Sox2,Krt5, Trp63

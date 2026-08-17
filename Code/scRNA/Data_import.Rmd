@@ -1,0 +1,259 @@
+---
+title: "Giulia Beccaceci scRNA of epithelial + stromal cells from stromal Il1r1 KO and epithelial Bmpr1a KO models - Data import"
+author: "Hilmar Berger"
+output: 
+ html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: false
+    number_sections: true
+    code_folding: hide
+    
+pdf_document:
+    fig_caption: true
+date: "`r format(Sys.time(), '%d %B, %Y %H:%M:%S')`"
+---
+
+```{r, message=FALSE}
+rm(list=ls())
+library(Seurat)
+library(ggplot2)
+library(Matrix)
+library(readxl)
+library(knitr)
+library(data.table)
+library(cowplot)
+library(dplyr)
+
+data_storage_folder = file.path("../../Data/scRNA/Processed")
+if (!file.exists(data_storage_folder)) dir.create(data_storage_folder, recursive=T)
+
+```
+
+# Overview
+
+Data is from stomach epithelial and stromal cells in mice. Samples were measured on a 10x Chromium system using 3' gene expression with cell multiplexing (Flex). 
+
+
+# Sequencing results
+
+
+```{r}
+metrics_summary = list.files(path="../../Data/scRNA/CellRanger/", pattern = "metrics_summary.csv", recursive = T, full.names=T)
+names(metrics_summary) = unlist(sapply(strsplit(dirname(metrics_summary),"/"), function(x) x[length(x)] ) )
+
+all_metrics = list()
+
+for (m in names(metrics_summary)) {
+  all_metrics[[m]] = read.table(metrics_summary[m], sep=",", header=T)
+  all_metrics[[m]]$SampleID = m
+}
+
+metrics_df_ts = do.call(rbind, all_metrics)
+metrics_df_ts = metrics_df_ts[metrics_df_ts$Grouped.By == "" & metrics_df_ts$Category=="Cells",]
+
+metrics_df <- reshape2::dcast(metrics_df_ts, SampleID ~ Metric.Name, value.var="Metric.Value")
+
+kable(metrics_df)
+```
+
+
+
+# Data import
+
+```{r}
+  mat_files = list.files(path="../../Data/scRNA/CellRanger", pattern = "*.mtx.gz", recursive = T, full.names = T)
+  mat_files = mat_files[grepl("sample_filtered_feature_bc_matrix",mat_files)]
+  folders = dirname(mat_files)
+  sample_ids = unlist(sapply(strsplit(folders,"/"), function(x) x[length(x)-2] ) )
+  names(folders) = sample_ids
+  
+  all_sample_data = list()
+  for (n in sample_ids) {
+    dir(path=folders[n])
+    tmp = Read10X( folders[n] )
+    all_sample_data[[n]] = CreateSeuratObject(tmp, project=n, names.field = 4:7 )
+  }
+  
+  all_ge_data_raw = merge(all_sample_data[[1]], all_sample_data[2:length(all_sample_data)])
+  rm(all_sample_data)
+  gc(verbose=F)
+
+  tmp <- readxl::read_excel("../../Data/scRNA/SampleDescription.xlsx", sheet = 1) |> as.data.frame()
+
+  ed <- data.frame(expID ="GiuliaBeccaceci" , 
+                   sampleID = sample_ids, 
+                   tissue_site = tmp[match(sample_ids, tmp$CR_ID), "Site"], 
+                   genotype = tmp[match(sample_ids, tmp$CR_ID), "Genotype"], 
+                   group = tmp[match(sample_ids, tmp$CR_ID), "Group"] )
+  
+  all_ge_data_raw@meta.data$orig_cell_id = Cells(all_ge_data_raw)
+  
+  for (cc in c("expID","tissue_site", "group", "genotype")) {
+    all_ge_data_raw = AddMetaData(all_ge_data_raw, ed[match(all_ge_data_raw$orig.ident, ed$sampleID), cc], col.name=cc)
+  }
+  
+  all_ge_data_raw@meta.data$sampleID <- all_ge_data_raw$orig.ident
+```
+
+## Cells per sample (unfiltered)
+
+```{r}
+meta = all_ge_data_raw@meta.data
+```
+
+
+```{r}
+table(all_ge_data_raw$sampleID)
+table(all_ge_data_raw$tissue_site)
+table(all_ge_data_raw$genotype)
+table(all_ge_data_raw$group)
+```
+
+```{r}
+par(mar=c(12,4,4,1))
+barplot(table(meta$sampleID), las=2, ylab="Cell count")
+```
+
+
+# Quality control
+
+## Detected genes
+
+```{r, fig.width = 8}
+ggplot(all_ge_data_raw@meta.data) + geom_boxplot(aes(x=orig.ident, y=nFeature_RNA, fill=sampleID)) + theme(axis.text.x = element_text(angle=45, hjust=1)) + ylab("Number of detected genes") + xlab("Sample") + scale_y_log10()
+```
+
+## UMIs
+
+```{r, fig.width = 8}
+ggplot(meta) + geom_boxplot(aes(x=orig.ident, y=nCount_RNA, fill=group)) + theme(axis.text.x = element_text(angle=45, hjust=1)) + ylab("Total RNA counts") + xlab("Sample") + scale_y_log10()
+```
+
+
+## Overview
+
+```{r}
+all_ge_data_raw <- PercentageFeatureSet(all_ge_data_raw, "^MT-|^mt-", col.name = "percent_mito")
+all_ge_data_raw <- PercentageFeatureSet(all_ge_data_raw, "^RP[SL]|^Rp[sl]", col.name = "percent_ribo")
+meta <- all_ge_data_raw@meta.data
+```
+
+
+### General features
+
+```{r, fig.width=14, fig.height=10}
+feats <- c("nFeature_RNA","nCount_RNA","percent_mito","percent_ribo")
+VlnPlot(all_ge_data_raw, group.by= "orig.ident", features = feats, pt.size = 0.01,ncol = 2) + NoLegend()
+```
+
+<!-- ### Pairwise parameter correlations -->
+
+<!-- ```{r, fig.width=14, fig.height=12} -->
+<!-- cowplot::plot_grid(ncol = 2, nrow = 1,  -->
+<!--   FeatureScatter(all_ge_data_raw, "nCount_RNA"  , "nFeature_RNA", group.by = "orig.ident", pt.size = .5) + guides(colour = guide_legend(override.aes = list(size=4))), -->
+<!--   FeatureScatter(all_ge_data_raw, "percent_mito", "nCount_RNA", group.by = "orig.ident", pt.size = .5) + guides(colour = guide_legend(override.aes = list(size=4))) + labs(title="nCount RNA vs percent_mito")#, -->
+<!--   #FeatureScatter(all_ge_data_raw, "percent_ribo", "nCount_RNA", group.by = "orig.ident", pt.size = .5) + guides(colour = guide_legend(override.aes = list(size=4))) + labs(title="nCount_RNAvs percent_ribo"), -->
+<!--   #FeatureScatter(all_ge_data_raw, "percent_ribo", "percent_mito", group.by = "orig.ident", pt.size = .5) + guides(colour = guide_legend(override.aes = list(size=4))) + labs(title="percent mito vs. percent ribo") -->
+<!-- ) -->
+
+<!-- ``` -->
+
+<!-- ### Pairwise feature distribution densities -->
+
+<!-- ```{r, fig.width=14, fig.height=6} -->
+<!-- meta = as.data.table(all_ge_data_raw@meta.data) -->
+
+<!-- ggplot(meta) + geom_density2d_filled(aes(x=nCount_RNA, y=nFeature_RNA), contour_var = "ndensity" ) + facet_wrap(~sampleID) + ggtitle("nCount_RNA, nFeature_RNA") -->
+<!-- #ggplot(meta) + geom_density2d_filled(aes(x=percent_ribo, y=nCount_RNA), contour_var = "ndensity" ) + facet_wrap(~condition) + ggtitle("percent ribo") -->
+<!-- ggplot(meta) + geom_density2d_filled(aes(x=percent_mito, y=nCount_RNA), contour_var = "ndensity" ) + facet_wrap(~sampleID) + ggtitle("percent mitochondrial") -->
+<!-- ``` -->
+
+
+
+### Thresholds for numbers of detected genes and percentage of mitochondrial genes
+
+```{r, eval=FALSE}
+hist(log10(meta$nCount_RNA), 1000, main="Log10 Number of reads per cell"); abline(v=log10(c(500,5e4)), col="red")
+hist(log10(meta$nFeature_RNA), 1000, main="Log10 Number of detected genes per cell"); abline(v=log10(c(500,8e3)), col="red")
+hist(meta$percent_mito, 1000, main="Percent mitochondrial RNA"); abline(v=5, col="red", xlim=c(0,10))
+```
+
+
+
+```{r, fig.width=12, fig.height=5}
+mt_thr = 5
+nfeature_thr_low = 1000
+nfeature_thr_hi = 10000
+nUMI_thr_low = 1000
+
+ggplot(meta) + geom_density(aes(x=nFeature_RNA) ) + facet_wrap(~orig.ident) + ggtitle("nFeature_RNA") + geom_vline(xintercept = c(nfeature_thr_low,nfeature_thr_hi), col="red")
+
+ggplot(meta) + geom_density(aes(x=nCount_RNA) ) + facet_wrap(~orig.ident) + ggtitle("nCount_RNA") + geom_vline(xintercept = c(nUMI_thr_low), col="red") + scale_x_log10()
+
+
+tmp <- meta %>%
+  group_by(orig.ident) %>%
+  summarise(perc_high = round(sum(percent_mito > mt_thr)/length(percent_mito),3))
+ggplot(meta) + geom_density(aes(x=percent_mito) ) + facet_wrap(~orig.ident) + ggtitle("percent_mito") + geom_vline(xintercept = c(mt_thr), col="red") +  geom_text(x = 60, y = 0.2, aes(label = paste0("Mt Proportion >",mt_thr,"%: ", perc_high)), data = tmp)
+```
+
+
+# Filtering 
+
+We exclude cells with less than `r nfeature_thr_low` detected genes, those with > `r nfeature_thr_hi` detected genes (possible doublets) and those with clear signs of cellular stress (percentage of mitochondrial RNA > `r mt_thr`%). 
+
+```{r}
+feature_low = nfeature_thr_low
+feature_high = nfeature_thr_hi
+max_mito = mt_thr
+umi_low = nUMI_thr_low
+all_ge_data_raw = AddMetaData(all_ge_data_raw, (all_ge_data_raw$nFeature_RNA > feature_low & all_ge_data_raw$nFeature_RNA < feature_high & all_ge_data_raw$percent_mito < max_mito & all_ge_data_raw$nCount_RNA > umi_low), col.name="CellFilterKeep")
+
+ribo.genes <- grepl(pattern = "^RP[SL]|^Rp[sl]", x = rownames(x = all_ge_data_raw@assays$RNA))
+mito.genes <- grepl(pattern = "^MT-|^mt-", x = rownames(x = all_ge_data_raw@assays$RNA))
+
+selected_c <- WhichCells(all_ge_data_raw, expression = CellFilterKeep )
+selected_f <- rownames(all_ge_data_raw)[ Matrix::rowSums(all_ge_data_raw) >= 2 & !(ribo.genes | mito.genes)]
+```
+
+
+
+## Number of removed/kept cells per condition
+
+```{r}
+m = table(all_ge_data_raw$orig.ident, ifelse(all_ge_data_raw$CellFilterKeep, "Keep","Remove") )
+m
+```
+
+```{r, fig.height=7, fig.width=8}
+mm_ts = reshape2::melt(m)
+colnames(mm_ts) = c("Group","Status","Count")
+mm_ts$Status = factor(mm_ts$Status, levels=c("Remove","Keep"))
+
+ggplot(mm_ts, aes(x=Group, fill=Status,y=Count)) + geom_bar(stat="identity") + theme(axis.text.x = element_text(angle=45, hjust=1, size=14), legend.text = element_text(size=16)) + xlab("") + geom_hline(yintercept = 1000) + ggtitle("Total number of kept and filtered cells per condition (horizontal line = 1000 cells)")
+
+#barplot(t(m), las=2, col=c("green","red"))
+```
+
+
+
+```{r}
+all_ge_data_filtered <- subset(all_ge_data_raw, features=selected_f, cells=selected_c)
+
+dim(all_ge_data_filtered)
+```
+
+Raw and filtered data is saved to individual files *All_Filtered_scData.Rdata* in folder `r data_storage_folder` .
+
+```{r}
+save(all_ge_data_filtered, ed, file=file.path(data_storage_folder, "All_Filtered_scData.Rdata"))
+```
+
+
+# Software versions
+
+```{r}
+sessionInfo()
+```
+

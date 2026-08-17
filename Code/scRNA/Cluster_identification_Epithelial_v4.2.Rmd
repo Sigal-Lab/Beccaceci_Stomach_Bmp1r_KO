@@ -1,0 +1,830 @@
+---
+title: "Cluster identification - Giulia Beccaceci scRNA from stromal Il1r1 KO and epithelial Bmpr1a KO models; epithelial cells only. CCadj"
+author: "Hilmar Berger"
+output: 
+ html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: false
+    number_sections: true
+    code_folding: hide
+    
+pdf_document:
+    fig_caption: true
+date: "`r format(Sys.time(), '%d %B, %Y %H:%M:%S')`"
+---
+
+
+```{r, message=FALSE}
+rm(list=ls())
+library(Seurat)
+library(ggplot2)
+
+library(SummarizedExperiment)
+library(readxl)
+library(writexl)
+library(knitr)
+library(data.table)
+library(cowplot)
+library(magrittr)
+library(dplyr)
+
+library(pheatmap)
+library(homologene)
+
+library(grid)
+library(png)
+library(speckle)
+library(knitr)
+
+result_folder = "../../Results/scRNA/epithelial"
+if (!file.exists(result_folder)) dir.create(result_folder, recursive=T)
+
+data_storage_folder = "../../Data/scRNA/Processed"
+if (!file.exists(data_storage_folder)) dir.create(data_storage_folder, recursive=T)
+
+library(future)
+options("future.globals.maxSize"=2**33)
+plan("multisession", workers = 8)
+
+source("../Rutils/Dotplot_scRNA_v2.2.R")
+
+rerun_dge_analyses = T
+```
+
+# General
+
+We use preprocessed data that included only subpopulations determined to be epithelial, no doublets. We used variable features only from WT/untreated cells in order to not bias clusters by treatment effects.
+
+
+```{r}
+scData.combined <- readRDS(file.path(data_storage_folder, "Giulia_Il1r1_Bmpr1a_Harmony_Epi_only_v4_CCadj.rds"))
+DefaultAssay(scData.combined) <- "RNA"
+set.seed(20260710); scData.combined <- FindClusters(scData.combined, resolution = 0.3)
+scData.combined <- JoinLayers(scData.combined)
+
+set.seed(1234)
+```
+
+
+# Cluster overview
+
+```{r, fig.width=8, fig.height=5}
+DimPlot(scData.combined, reduction = "umap", label = TRUE)
+```
+
+```{r, fig.width=10, fig.height=5}
+DimPlot(scData.combined, reduction = "umap", label = TRUE, split.by = "group", ncol = 4)
+```
+
+
+# Final cluster assigment
+
+```{r}
+cluster_assignment = read.table("Cluster_assignments/Cluster_assignment_Epi_only_2026-07-16_v4.2.txt", sep="\t",header=T, stringsAsFactors = F)
+options(width = 180)
+print(cluster_assignment)
+rownames(cluster_assignment) = as.character(cluster_assignment$ClusterID)
+scData.combined = AddMetaData(scData.combined, cluster_assignment[as.character(scData.combined$seurat_clusters),"Label"], col.name = "cluster_label")
+scData.combined = AddMetaData(scData.combined, cluster_assignment[as.character(scData.combined$seurat_clusters),"Type"], col.name = "cluster_type")
+
+scData.combined$cluster_label <- factor(scData.combined$cluster_label, levels = sort(unique(cluster_assignment$Label)))
+scData.combined = SetIdent(scData.combined, value="cluster_label" )
+```
+
+
+```{r}
+group_labels <- c("epiBmpr1aKO uninfected" = "Bmpr1a KO","epiBmpr1aWT uninfected"="Bmpr1a WT","Stromal IL1r1 WT Hpy 2m inf"="H.pylori 2m","Stromal IL1r1 WT uninfected"= "Uninfected")
+
+scData.combined@meta.data$group_label <- group_labels[as.character(scData.combined$group)]
+scData.combined@meta.data$Experiment <- ifelse(scData.combined$group_label %in% c("Uninfected","H.pylori 2m"), "Hpy infection", "Bmpr1a KO") |> factor(levels=c("Hpy infection","Bmpr1a KO"))
+```
+
+
+```{r}
+group_order = c("Uninfected","H.pylori 2m", "Bmpr1a WT",  "Bmpr1a KO" )
+cluster_order <- c("Stem antral","TA/Progenitor antral","TA/Progenitor corpus","Chief cell","Parietal","Pit/Surface mucous antral","Pit corpus","EC-like cell","EE-Pro/EC cell","EEC Chga","EEC Sst","G-cell","Tuft","Squamous","Pit stressed")
+```
+
+```{r}
+scData.combined$cluster_label <- factor(scData.combined$cluster_label, levels = cluster_order)
+scData.combined$group_label <- factor(scData.combined$group_label, levels = group_order)
+```
+
+```{r}
+scData.combined = SetIdent(scData.combined, value="cluster_label" )
+```
+
+
+```{r, fig.width=10, fig.height=5}
+p = DimPlot(scData.combined, reduction = "umap", label = TRUE) + NoLegend()
+print(p)
+```
+
+
+```{r}
+scData.combined@meta.data$foo = c(rep("0",100), rep("1",nrow(scData.combined@meta.data)-100))
+pdf(file.path(result_folder, "UMAP_annotated_Epi_v4.2.pdf"), width=10, height=5)
+p = DimPlot(scData.combined, reduction = "umap", label = TRUE, raster = T, pt.size = 3.5, raster.dpi = c(1000, 1000), shape.by = "foo") + NoLegend()
+print(p)
+dev.off()
+```
+
+```{r, fig.width=15, fig.height=5}
+p = DimPlot(scData.combined, reduction = "umap", label = T, split.by="group") + NoLegend()
+print(p)
+```
+
+
+## Distribution of clusters within samples
+
+```{r}
+m = table(scData.combined$cluster_label, scData.combined$sampleID)
+kable(m)
+```
+
+```{r, fig.width=10,fig.height=7}
+mm  = as.matrix.data.frame(m)
+colnames(mm) = colnames(m)
+rownames(mm) = rownames(m)
+
+mm_r = sweep(mm, 2, apply(mm,2,sum), "/")
+
+pheatmap(mm_r, cluster_cols = F, cluster_rows=T, main="Proportion of each cluster per sample")
+```
+
+
+## Distribution of clusters within conditions
+
+```{r}
+m = with(subset(scData.combined@meta.data, !cluster_label %in% c("Pit stressed")), table(droplevels(cluster_label), group_label))
+m
+```
+
+```{r}
+mm  = as.matrix.data.frame(m)
+colnames(mm) = colnames(m)
+rownames(mm) = rownames(m)
+
+mm_r = sweep(mm, 2, apply(mm,2,sum), "/")
+
+options(width=200)
+kable(round(mm_r,3))
+```
+
+
+```{r, fig.width=6,fig.height=5}
+pheatmap(mm_r, cluster_cols = F, cluster_rows=T)
+```
+
+```{r, fig.width=14, fig.height=8}
+mm_rel_ts = reshape2::melt(t(mm_r))
+colnames(mm_rel_ts) = c("Group","Cluster","Proportion_cells")
+mm_rel_ts$Cluster = factor(paste0("",mm_rel_ts$Cluster))
+
+ggplot(mm_rel_ts, aes(x=Group, y = Proportion_cells, group=Cluster)) + geom_bar(stat="identity") + theme(axis.text.x = element_text(angle=60, hjust=1)) + facet_wrap(~ Cluster )
+```
+
+```{r, fig.width=10, fig.height=6}
+#cluster_order = sort(unique(mm_rel_ts$Cluster))
+#group_order = c("epiBmpr1aWT uninfected","epiBmpr1aKO uninfected","Stromal IL1r1 WT uninfected","Stromal IL1r1 WT Hpy 2m inf")
+mm_rel_ts$Cluster = factor(mm_rel_ts$Cluster, levels=cluster_order)
+mm_rel_ts$Group <- factor(mm_rel_ts$Group,group_order)
+ggplot(mm_rel_ts, aes(x=Group, y = Proportion_cells, fill=Cluster)) + geom_bar(stat="identity") + 
+  theme(axis.text.x = element_text(angle=45, hjust=1))
+```
+
+```{r, fig.width=12, fig.height=5}
+m = with(subset(scData.combined@meta.data, !cluster_label %in% c("Pit stressed")),table(droplevels(cluster_label), orig.ident) )
+aa <- prop.table(m, margin=2) |> reshape2::melt()
+aa <- merge(aa, unique(scData.combined@meta.data[, c("orig.ident","group_label")]), by.x="orig.ident", by.y="orig.ident")
+aa$group <- factor(aa$group_label, levels=group_order)
+aa$cluster = factor(aa$Var1, levels=cluster_order)
+ggplot(aa, aes(x=cluster, fill=group, y=value)) + geom_boxplot() + ggtitle("Clusters in groups") + ylab("Average proportion in samples") +  theme(axis.text.x = element_text(angle=45, hjust = 1, size=14))
+```
+
+## Comparison of celltype composition
+
+We here use the logit-transformation from R package **speckle** to compare cluster proportions between groups.
+
+```{r, results='asis'}
+meta <- subset(scData.combined@meta.data, !cluster_label %in% c("stressed cells"))
+m_axin2 <- subset(meta, genotype %in% c("Axin2CreErt2-Bmpr1afl/fl KO","Axin2CreErt2-Bmpr1afl/fl WT"))
+res_axin2 <- speckle::propeller(cluster = droplevels(m_axin2$cluster_label), 
+                          sample = m_axin2$orig.ident, 
+                          group = as.character(m_axin2$group_label))
+
+m_col1 <- subset(meta, genotype %in% c("Col1a2CreErt2-Il1r1fl/fl WT"))
+res_col1 <- speckle::propeller(cluster = droplevels(m_col1$cluster_label), 
+                          sample = m_col1$orig.ident, 
+                          group = as.character(m_col1$group_label))
+
+kable(res_axin2)
+kable(res_col1)
+```
+
+
+
+```{r, fig.width=13, fig.height=5}
+m = with(subset(scData.combined@meta.data, !cluster_label %in% c("Pit stressed")),table(cluster_label |> droplevels(), orig.ident))
+aa <- prop.table(m, margin=2) |> reshape2::melt()
+aa <- merge(aa, unique(scData.combined@meta.data[, c("orig.ident","group_label","Experiment")]), by.x="orig.ident", by.y="orig.ident")
+aa$group <- factor(aa$group, levels=group_order)
+
+aa$xx <- ifelse(aa$group %in% c("Uninfected","Bmpr1a WT"), 1,2)
+aa$cluster = factor(gsub(" |/" , "\n", aa$Var1), levels=gsub(" |/", "\n", cluster_order))
+p <- ggplot(aa, aes(x=xx, col=group, y=value)) + geom_point() + stat_summary(geom = "crossbar", fun = mean, width=0.5) + ggtitle("Epithelial subcluster proportions across groups - this study") + ylab("Average proportion in samples") + 
+  theme(axis.text.x = element_blank(), axis.ticks.x=element_blank(), strip.text = element_text(size=12)) + facet_grid(Experiment ~ cluster, scales = "free_x") + xlab("")
+
+p
+```
+
+```{r}
+saveRDS(scData.combined@meta.data,file=file.path(data_storage_folder, "Giulia_Il1r1_Bmpr1a_Harmony_epi_Metadata_v4.2_CCadj.rds"))
+```
+
+# Marker genes for clusters (assessed on WT cells only)
+
+```{r}
+if(rerun_dge_analyses) {
+  cluster_markers <- FindAllMarkers(object = scData.combined, only.pos = TRUE, assay = "RNA")
+  cluster_markers$diff_pct <- cluster_markers$pct.1 - cluster_markers$pct.2
+  saveRDS(cluster_markers, file=file.path(data_storage_folder, "All_cluster_markers_Epi_only_v4.2_CCadj.rds"))
+  write_xlsx(cluster_markers,file.path(result_folder, "All_cluster_markers_Epi_only_v4.2_CCadj.xlsx"))
+} else {
+  cluster_markers <- readRDS(file.path(data_storage_folder, "All_cluster_markers_Epi_only_v4.2_CCadj.rds"))
+}
+```
+
+```{r}
+plot_top_genes <- function(data, dge_results_all, title) {
+  for (n in sort(unique(dge_results_all$cluster))) {
+    tmp = subset(dge_results_all, cluster==n)
+    if(nrow(tmp)<1) next
+    tmp_up = subset(tmp, avg_log2FC > 0)
+    if(nrow(tmp_up)<1) next
+    tmp_up$direction = "up"
+    #tmp_down = subset(tmp, avg_log2FC < 0)
+    #tmp_down$direction = "down"
+    
+    #final_top_genes = rbind(head(tmp_up,10), head(tmp_down,10))
+    final_top_genes = head(tmp_up, 10)
+    final_top_genes = final_top_genes[order(final_top_genes$avg_log2FC),]
+    final_top_genes$gene = factor(final_top_genes$gene, levels = final_top_genes$gene)
+    p = ggplot(final_top_genes, aes(y=avg_log2FC, x=gene, fill=direction)) + geom_bar(stat="identity") + ggtitle(paste0(n, ", ", title)) + coord_flip() + theme(axis.text.y =  element_text(size=12) )
+    print(p)
+    
+  }
+}
+```
+
+
+## Percent expression of top markers across clusters
+
+```{r, fig.width=16, fig.height=14}
+top_5_markers = unique(unlist(tapply(cluster_markers$gene, cluster_markers$cluster, head, 5)))
+DotPlot(scData.combined, features = top_5_markers , dot.scale = 4, cols = c("red", "blue"), assay = "RNA") +    RotatedAxis()
+```
+
+
+
+## Log2 Fold Changes of top 10 DE genes from each cluster
+
+```{r, fig.width=7, fig.height=4}
+plot_top_genes(scData.combined, cluster_markers, "Cluster markers")
+```
+
+
+
+
+```{r}
+
+plot_genes <- function(dataset, genes) {
+  
+  all_genes =rownames(dataset@assays$RNA)
+  
+  for (g in genes) {
+    if (!g %in% all_genes) {
+      print(paste0("Gene ",g," has no data (possibly filtered out)."))
+      next
+    } else {
+        p1  =FeaturePlot(object = dataset, features = g, reduction="umap", label = T)
+        p2 = VlnPlot(dataset, features = g, ncol = 1, pt.size = 0.01)
+        print(plot_grid(p1,p2, ncol=2,align="h"))
+    }
+  }
+}
+```
+
+
+# Individual marker expression
+
+## Global markers 
+
+These are global cell markers for major cell lineages and types (B/T-cells, Mo/MF etc)
+
+CD45 is Ptprc.  
+Pglyrp1 - circulating polymorphonuclear leukocytes (granulocytes + mast cells)  
+
+We here add Cd3e/d/g as pan-T marker and Cd20 (Ms4a1) as mature B-cell marker.
+Gata3, Cxcr6, Rora - T-cell markers
+
+Ly6a(Sca-1) - positive in HSC/MPP
+Procr,Fdg5, Hoxb5 - HSC
+
+Epor, Slamf1(Cd150) - MegE - lineage
+
+```{r, fig.width=14, fig.height=6}
+
+sel_markers=c("Ptprc","Pglyrp1","Cd4","Cd3e","Cd3d","Cd3g", "Gata3","Cxcr6","Rora","Cd7","Cd8a","Cd19","Ms4a1","Jchain","Aif1","Cd68","Flt3","Ly6a", "Cd34","Procr","Fgd5","Hoxb5","Epor","Slamf1","Vim","Pecam1","Lyve1","Vwf","Col1a1","Myh11","Acta2","Epcam","Krt20","Lgr5","Axin2","S100b","Ncam1","Sox2","Gfap")
+DefaultAssay(scData.combined) <- "RNA"
+
+#plot_genes(scData.combined, sel_markers)
+DotPlot(scData.combined, features=sel_markers, cols="RdYlBu", assay="RNA")+ theme(axis.text.x=element_text(angle=45, hjust=1))
+
+```
+
+## Granulocyte subpopulations
+
+Pglyrp1 - circulating polymorphonuclear leukocytes (granulocytes + mast cells)  
+Csf3r - colony stimulating factor 3 receptor (granulocytes)  G-CSF-R. Higher in mature blood neutrophils (Shinjo et al. 1995 doi: 10.1111/j.1365-2141.1995.tb05390.x)
+
+Mpo,Elane - neutrophil markers  
+Prg2 - eosinophils (Dahlin)  
+Gzmb, Cma1 - Mast cell (Dahlin)  
+Ms4a2, Cpa3 Mast cell, basophil (Dahlin)  
+Fcer1a - basophils, mastcells - high affinity IgE receptor  
+Ggnt2 - eosinophils  
+Il5ra - eosinophil progenitor  
+
+
+
+```{r, fig.width=14, fig.height=6}
+
+sel_markers=c("Pglyrp1","Csf3r","Mpo","Elane","Gngt2","Il5ra","Prg2","Gzmb","Cma1","Ms4a2","Cpa3","Fcer1a","Cxcr1","Cxcr2")
+DefaultAssay(scData.combined) <- "RNA"
+
+#plot_genes(scData.combined, sel_markers)
+DotPlot(scData.combined, features=sel_markers, cols="RdYlBu", assay="RNA")+ theme(axis.text.x=element_text(angle=45, hjust=1))
+
+```
+
+
+## Monocyte and macrophage markers
+
+Adgre1 = F4/80 = Emr1, Blood Monocytes  
+
+CD14lowCD16high - non-classical MoMF    
+CD16 - Fcgr4 (FCGR3A/B)  
+Fcgr1 (Cd64) MoMF  
+Spn (Cd45) classical Mo  
+Cd11b = Itgam  
+
+EMP (Mass et al.) Csf1r + Kit + CD45 low AA4.1(Cd93)+   
+
+```{r, fig.width=14, fig.height=6}
+sel_markers=c("Adgre1","Ccr2","Ccr5","Arg1","Mgst1","Fn1","Cd74","Cd68","S100a8","S100a9","Cd14","Fcgr3","Cx3cr1","Fcgr1a","Spn","Itgam","Csf1r","Kit","Cd93","Il7r","Flt3","Cxcr4","Il1b","Aif1","Timd4")
+DefaultAssay(scData.combined) <- "RNA"
+
+#plot_genes(scData.combined, sel_markers)
+DotPlot(scData.combined, features=sel_markers, cols="RdYlBu", assay="RNA")+ theme(axis.text.x=element_text(angle=45, hjust=1))
+```
+
+
+## DC markers
+
+Xcr1 cDC  
+Siglech pDC  
+Irf8 pre-DC1  
+Ccr7 cDC2  
+Pclaf (2810417H13Rik) CMoP / pre-DC1  
+Cd209a cDC2, pDC  
+Tlr2 cDC  
+Tlr4 cDC  
+
+Socs2 Tissue migratory DC (Nirschl et al. 2017, 10.1016/j.cell.2017.06.016)  
+
+
+```{r, fig.width=14, fig.height=6}
+sel_markers=c( "Socs2", "Xcr1", "Siglech", "Cd209a", "Irf8", "Pclaf", "Tlr2","Tlr4","Tlr7","Tlr9","CD1C","CLEC4C")
+DefaultAssay(scData.combined) <- "RNA"
+
+#plot_genes(scData.combined, sel_markers)
+DotPlot(scData.combined, features=sel_markers, cols="RdYlBu", assay="RNA")+ theme(axis.text.x=element_text(angle=45, hjust=1))
+```
+
+
+## MHC-I/II
+
+```{r, fig.width=14, fig.height=6}
+sel_markers=c("H2-Oa","H2-DMa","H2-DMb1","H2-DMb2","H2-Ob","H2-Ab1","H2-Aa","H2-Eb1","H2-Eb2")
+#sel_markers = c("HLA-A","HLA-B","HLA-C","HLA-D","HLA-E","HLA-F","HLA-G","HLA-DRA","HLA-DRB","HLA-DQA1","HLA-DQB1","HLA-DPA1","HLA_DPB1","HLA_DMA","HLA_DMB","HLA-DOA","HLA_DOB","MICA","MICB")
+DefaultAssay(scData.combined) <- "RNA"
+
+#plot_genes(scData.combined, sel_markers)
+DotPlot(scData.combined, features=sel_markers, cols="RdYlBu", assay="RNA")+ theme(axis.text.x=element_text(angle=45, hjust=1))
+```
+
+## Stomach site markers
+
+```{r, fig.height=8, fig.width=12}
+dotplot_scRNA_multi_feature(scData.combined, features=c("Apc","Axin2","Anxa10","Sox2","Gata4","Meis1","Pdx1","Gata6"),  group="group", cluster="cluster_label", scale=T)+ theme(axis.text.x=element_text(angle=45, hjust=1))
+```
+
+```{r}
+sd1 <- subset(scData.combined, group %in% c("epiBmpr1aWT uninfected","Stromal IL1r1 WT uninfected"))
+```
+
+
+```{r, fig.height=8, fig.width=10}
+dotplot_scRNA_multi_feature(sd1, features=c("Apc","Axin2","Anxa10","Sox2","Gata4","Meis1","Pdx1","Gata6"),  group="tissue_site", cluster="cluster_label", scale=T)+ theme(axis.text.x=element_text(angle=45, hjust=1))
+```
+
+```{r}
+aa <- LayerData(scData.combined, layer = "data", features=c("Pdx1","Sox2"))
+plot(density(aa["Pdx1",])); abline(v=0.2, col="red")
+barplot(tapply(aa["Pdx1",], scData.combined$seurat_clusters, mean), las=2); abline(h=0.2, col="red")
+
+plot(density(aa["Sox2",])); abline(v=0.15, col="red")
+barplot(tapply(aa["Sox2",], scData.combined$seurat_clusters, mean), las=2); abline(h=0.15, col="red")
+```
+
+```{r, fig.width=16, fig.height=6}
+for (gg in c("Apc","Anxa10","Sox2","Gata6","Gata4","Meis1","Pdx1")) {
+  p <- FeaturePlot(sd1, features = gg, order=T, split.by="tissue_site") + NoLegend()
+  print(p)
+}
+```
+
+## Stomach epithelial cell markers
+
+```{r, fig.width=14, fig.height=6}
+sel_markers=c("Lgr5","Ascl2","Aqp5","Muc5ac","Muc6","Gkn1","Pgc","Pga5", "Cblif","Mki67","Mcm3","Dclk1", "Muc2","Krt20","Olfm4", "Atp4a","Atp4b","Sox2","Cdx2", "Aldh1a1","Tff1","Tff2","Chga","Chgb","Tph1","Sst","Maoa","Maob","Gast","Neurog3","Hdc","Grpr","Dach1","Cntfr","Slc5a5","Adh1c","Muc4","Sctr") # |> human2mouse(db=homologeneData2) |> (\(x) x$mouseGene[!is.na(x$mouseGene)] |> unique())()
+DefaultAssay(scData.combined) <- "RNA"
+
+#plot_genes(scData.combined, sel_markers)
+DotPlot(scData.combined, features=sel_markers, cols="RdYlBu", assay="RNA")+ theme(axis.text.x=element_text(angle=45, hjust=1))
+```
+
+```{r, fig.width=14, fig.height=6}
+
+sel_markers=c("Tff1","Tff2","Muc6","Muc5ac","Pdx1","Sox2","Gkn1","Lgr5","Ascl2","Aqp5","Muc4","Mki67","Mcm3",
+              "Gstm3","Sptssb","Aldh3a1","Mogat1",
+              "Krt20","Pgc","Pga5", "Cblif","Chia1", "Atp4a","Atp4b",
+#              "Krt5","Krt14",
+              "Hdc","Chga","Chgb","Neurog3","Sst","Tph1","Gast","Grpr","Dclk1","Krt19","Stmn1","Bmi1","Cckbr","Vegfb","Gper1","Bhlha15","Tnfrsf19")  
+DefaultAssay(scData.combined) <- "RNA"
+
+#plot_genes(scData.combined, sel_markers)
+p <- DotPlot(scData.combined, features=sel_markers, cols="RdYlBu", assay="RNA",, col.max = 2, col.min = -2)+ theme(axis.text.x=element_text(angle=45, hjust=1)) + labs(x="", y="" , title="Selected markers for epithelial cell populations - this study")
+
+p
+```
+
+## Other epithelial markers
+
+```{r, fig.width=10, fig.height=6}
+# ,"Klf4","Myc","Nanog"
+DotPlot(scData.combined, c("Sox2","Hnf4a","Hnf4g","Atoh1","Cdx2","Krt5","Krt14","Krt7","Krt19","Krt20","Krt8","Krt18","Aqp8","Car4","Aqp4","Muc5ac","Muc6","Tff1","Tff2","Tff3","Ly6a","Vtn","Gc","Spink4","Muc2"), cols="RdYlBu",assay="RNA") + theme(axis.text.x = element_text(angle=45, hjust=1))
+```
+
+
+```{r, fig.width=10, fig.height=6}
+# taken from https://doi.org/10.1016/j.cels.2016.09.002
+# Slc18a2 = Vmat2
+DotPlot(scData.combined, c("Gcg","Irx2","Arx","Fev","Gc","Ttr","Pgr","Mafb","Ins1","Mafa","Hhex","Sst","Isl1","Rbp4","Gip","Pyy","Etv1","Pax6","Gast","Pdx1","Cck","Nts","Hdc","Tac1","Sct","Neurog3","Olfm1"), cols="RdYlBu",assay="RNA") + theme(axis.text.x = element_text(angle=45, hjust=1))
+```
+
+## WAE markers
+
+SSC2c cluster markers from Ayyaz, A., Kumar, S., Sangiorgi, B. et al. Single-cell transcriptomes of the regenerating intestine reveal a revival stem cell. Nature 569, 121–125 (2019). https://doi.org/10.1038/s41586-019-1154-y  
+
+and markers from WAE cells in Nakate et al. (DOI: 10.1126/scitranslmed.adg5252)
+
+```{r, fig.width=8, fig.height=5}
+sel_markers = c("Clu","Cd44","Ly6a","Aldh1a3","Cldn4","Krt14","Krt7","Anxa1","Anxa3")
+DotPlot(scData.combined, features=sel_markers, cols="RdYlBu", assay="RNA")+ theme(axis.text.x=element_text(angle=45, hjust=1))
+```
+
+```{r, fig.width=22, fig.height=8}
+sel_markers <- c("Lgr5","Aqp5","Muc5ac","Muc6","Gkn1","Pgc","Cblif","Mki67","Dclk1", "Krt20","Olfm4", "Atp4a","Cdx2","Tff2","Chga","Tph1","Sst","Gast","Cd74","H2-Eb1","Bmpr1a","Il1r1")
+dotplot_scRNA_multi_feature(scData.combined, cluster = "cluster_label", group = "group", features = sel_markers, scale=T, group_order = group_order)
+```
+
+<!-- ## Yap/fetal/RSC markers -->
+
+
+<!-- ```{r} -->
+<!-- sel_clusters <- unique(scData.combined$cluster_label) |> as.character() -->
+<!-- sel_clusters <- sel_clusters[!sel_clusters %in% c("Squamous", "Surface mucus dying ", "EEC Sst dying")] -->
+
+<!-- cluster_order <- c("SC antral","Chief-Pro","Antral-pro Cldn2 Muc4","Chief/Parietal","TA antral","TA corpus","Pit antral early","Pit antral","Pit corpus","Surface mucus Krt20","Parietal","G-cell","Tuft","EEC Sst","EC-like cell","EEC Chga","EEC Tph1","EEC Neurog3") -->
+
+<!-- sd_bmp <- subset(scData.combined, genotype %in% c("Axin2CreErt2-Bmpr1afl/fl KO","Axin2CreErt2-Bmpr1afl/fl WT") & cluster_label %in% sel_clusters) -->
+<!-- sd_bmp@meta.data$condition <- gsub("epiBmpr1a","", sd_bmp$group) |> gsub(" uninfected", "", x=_) -->
+
+<!-- sd_inf <- subset(scData.combined, genotype %in% c("Col1a2CreErt2-Il1r1fl/fl WT") & cluster_label %in% sel_clusters) -->
+<!-- sd_inf@meta.data$condition <- gsub("Stromal IL1r1 WT ","", sd_inf$group) -->
+<!-- ``` -->
+
+
+<!-- ```{r, fig.width=14, fig.height=6} -->
+<!-- sel_markers <- c("Anxa1", "Ccn2", "Ccn1", "Wfdc2", "Ly6a", "Tubb6", "Sftpd", "Tacstd2", "Gja1","Lgr5", "Lgr4", "Bmi1", "Tff2",  "Hopx", "Smoc2", "Lrig1", "Vil1") -->
+
+<!-- dotplot_scRNA_multi_feature(sd_bmp, cluster = "cluster_label", group = "condition", features = sel_markers, scale=T, group_order = c("WT","KO"), cluster_order = cluster_order) -->
+
+<!-- dotplot_scRNA_multi_feature(sd_inf, cluster = "cluster_label", group = "condition", features = sel_markers, scale=T, group_order = c("uninfected","Hpy 2m inf"), cluster_order = cluster_order) -->
+
+<!-- sel_markers_inf <- read.table(text="IL1A -->
+<!-- TNF -->
+<!-- IL1R1 -->
+<!-- TNFRSF1A -->
+<!-- TNFRSF1B -->
+<!-- RELA -->
+<!-- IKBKG -->
+<!-- IKBKB -->
+<!-- NFKB1 -->
+<!-- MYD88 -->
+<!-- TNFAIP3 -->
+<!-- CHUK -->
+<!-- MAP3K7 -->
+<!-- MAP3K1 -->
+<!-- MAP3K14 -->
+<!-- TRADD -->
+<!-- RIPK1 -->
+<!-- FADD -->
+<!-- TRAF6 -->
+<!-- TAB1 -->
+<!-- NFKBIA -->
+<!-- ")$V1 |> unique() |> homologene::human2mouse(db = homologene::homologeneData2) |> (\(x) x$mouseGene)() |> unique() -->
+
+<!-- dotplot_scRNA_multi_feature(sd_bmp, cluster = "cluster_label", group = "condition", features = sel_markers_inf, scale=T, group_order = c("WT","KO"), cluster_order = cluster_order) + ggtitle("BIOCARTA_NFKB_PATHWAY") -->
+<!-- ``` -->
+
+
+<!-- ```{r, fig.width=14, fig.height=6} -->
+<!-- sel_markers <- c("Tead4", "Wfdc2", "Itga2", "Tgm2", "Lrg1", "Anxa1", "Sftpd", "Ccn1", "Vnn1", "Clu", "Socs3", "Ly6a", "Il33", "Ly6d", "Gpnmb", "Ereg") -->
+
+<!-- p1 <- dotplot_scRNA_multi_feature(sd_inf, cluster = "cluster_label", group = "condition", features = sel_markers, scale=T, group_order = c("uninfected","Hpy 2m inf"), cluster_order = cluster_order) + ggtitle("Regenerative state genes - +/- Hpy infection") + xlab("") + ylab("") -->
+<!-- p1 -->
+<!-- p2 <- dotplot_scRNA_multi_feature(sd_bmp, cluster = "cluster_label", group = "condition", features = sel_markers, scale=T, group_order = c("WT","KO"), cluster_order = cluster_order) + ggtitle("Regenerative state genes - KO vs. WT") + xlab("") + ylab("") -->
+<!-- p2 -->
+
+<!-- pdf(file.path(result_folder, "Selected_Regenerative_state_genes_Hpy_inf.pdf"), width=14, height = 6) -->
+<!-- print(p1) -->
+<!-- dev.off() -->
+
+<!-- pdf(file.path(result_folder, "Selected_Regenerative_state_genes_Bmpr1a_KO.pdf"), width=14, height = 6) -->
+<!-- print(p2) -->
+<!-- dev.off() -->
+
+<!-- ``` -->
+
+
+<!-- ```{r, fig.width=8.5, fig.height=5} -->
+<!-- sel_mat <- AverageExpression(sd_inf, assays = "RNA", features = sel_markers, group.by = c("condition","cluster_label"))[["RNA"]] -->
+
+<!-- agg_mat <- as.matrix(sel_mat) -->
+
+<!-- tmp <- strsplit(colnames(agg_mat), "_") -->
+<!-- col_anno <- data.frame(row.names=colnames(agg_mat),  -->
+<!--                        Condition = sapply(tmp, `[`,1) |> factor(levels=c("uninfected","Hpy 2m inf")) ,  -->
+<!--                        Cluster = sapply(tmp, `[`,2)|> factor(levels=cluster_order)) -->
+
+<!-- agg_mat <- agg_mat[sel_markers, order(col_anno[match(colnames(agg_mat), rownames(col_anno)),"Cluster"],  -->
+<!--                            col_anno[match(colnames(agg_mat), rownames(col_anno)),"Condition"])] -->
+
+<!-- anno_cols <- list(Condition=c("uninfected"="lightgreen","Hpy 2m inf"="red")) -->
+
+<!-- pheatmap(agg_mat, cluster_cols=F, cluster_rows = F, scale="row", gaps_col = seq(2, ncol(agg_mat)-2, 2) , breaks=c(-5,-3,seq(-2,2,4/96),3,5),  -->
+<!--          annotation_col = col_anno[,c("Condition"), drop=F], -->
+<!--          labels_col = col_anno[match(colnames(agg_mat), rownames(col_anno)), "Cluster"], -->
+<!--          annotation_colors = anno_cols, -->
+<!--          main="Scaled average expression of regenerative markers, Hpy vs. uninfected") -->
+
+<!-- pheatmap(agg_mat, cluster_cols=F, cluster_rows = F, scale="row", gaps_col = seq(2, ncol(agg_mat)-2, 2) , breaks=c(-5,-3,seq(-2,2,4/96),3,5),  -->
+<!--          annotation_col = col_anno[,c("Condition"), drop=F], -->
+<!--          labels_col = col_anno[match(colnames(agg_mat), rownames(col_anno)), "Cluster"], -->
+<!--          annotation_colors = anno_cols, -->
+<!--          main="Scaled average expression of regenerative markers, Hpy vs. uninfected",  -->
+<!--          filename = file.path(result_folder, "Regenerative_state_markers_Hpy_inf_Heatmap.pdf"), width = 8.5, height = 5) -->
+
+<!-- ``` -->
+
+
+<!-- ```{r, fig.width=8.5, fig.height=5} -->
+<!-- sel_mat <- AverageExpression(sd_bmp, assays = "RNA", features = sel_markers, group.by = c("condition","cluster_label"))[["RNA"]] -->
+
+<!-- agg_mat <- as.matrix(sel_mat) -->
+
+<!-- tmp <- strsplit(colnames(agg_mat), "_") -->
+<!-- col_anno <- data.frame(row.names=colnames(agg_mat),  -->
+<!--                        Condition = sapply(tmp, `[`,1) |> factor(levels=c("WT","KO")) ,  -->
+<!--                        Cluster = sapply(tmp, `[`,2)|> factor(levels=cluster_order)) -->
+
+<!-- agg_mat <- agg_mat[sel_markers, order(col_anno[match(colnames(agg_mat), rownames(col_anno)),"Cluster"],  -->
+<!--                            col_anno[match(colnames(agg_mat), rownames(col_anno)),"Condition"])] -->
+
+<!-- anno_cols <- list(Condition=c("WT"="lightgreen","KO"="red")) -->
+
+<!-- pheatmap(agg_mat, cluster_cols=F, cluster_rows = F, scale="row", gaps_col = seq(2, ncol(agg_mat)-2, 2) , breaks=c(-5,-3,seq(-2,2,4/96),3,5),  -->
+<!--          annotation_col = col_anno[,c("Condition"), drop=F], -->
+<!--          labels_col = col_anno[match(colnames(agg_mat), rownames(col_anno)), "Cluster"], -->
+<!--          annotation_colors = anno_cols, -->
+<!--          main="Scaled average expression of regenerative markers, Hpy vs. uninfected") -->
+
+<!-- pheatmap(agg_mat, cluster_cols=F, cluster_rows = F, scale="row", gaps_col = seq(2, ncol(agg_mat)-2, 2) , breaks=c(-5,-3,seq(-2,2,4/96),3,5),  -->
+<!--          annotation_col = col_anno[,c("Condition"), drop=F], -->
+<!--          labels_col = col_anno[match(colnames(agg_mat), rownames(col_anno)), "Cluster"], -->
+<!--          annotation_colors = anno_cols, -->
+<!--          main="Scaled average expression of regenerative markers, Bmpr1a KO vs. WT",  -->
+<!--          filename = file.path(result_folder, "Regenerative_state_markers_Bmpr1a_KO_Heatmap.pdf"), width = 8.5, height = 5) -->
+<!-- ``` -->
+
+
+
+<!-- ```{r, fig.width=8, fig.height=6} -->
+<!-- sel_markers_inf <- c("Cxcl1","Cxcl2","Cxcl5","Ccl20","Cxcl10") -->
+<!-- p1 <- dotplot_scRNA_multi_feature(sd_inf, cluster = "cluster_label", group = "condition", features = sel_markers_inf, scale=T, group_order = c("uninfected","Hpy 2m inf"), cluster_order = cluster_order) + ggtitle("Inflammatory cytokines - +/- Hpy infection") + xlab("") + ylab("") -->
+<!-- p1 -->
+
+<!-- p2 <- dotplot_scRNA_multi_feature(sd_bmp, cluster = "cluster_label", group = "condition", features = sel_markers_inf, scale=T, group_order = c("WT","KO"), cluster_order = cluster_order) + ggtitle("Inflammatory cytokines - Bmpr1a KO vs. WT") + xlab("") + ylab("") -->
+<!-- p2 -->
+
+<!-- pdf(file.path(result_folder, "Inflammatory cytokines_Hpy_inf.pdf"), width=8, height = 6) -->
+<!-- print(p1) -->
+<!-- dev.off() -->
+
+<!-- pdf(file.path(result_folder, "Inflammatory cytokines_Bmpr1a_KO.pdf"), width=8, height = 6) -->
+<!-- print(p2) -->
+<!-- dev.off() -->
+
+<!-- ``` -->
+
+<!-- ```{r, fig.width=8, fig.height=3} -->
+<!-- sel_mat <- AverageExpression(sd_inf, assays = "RNA", features = sel_markers_inf, group.by = c("condition","cluster_label"))[["RNA"]] -->
+
+<!-- agg_mat <- as.matrix(sel_mat) -->
+
+<!-- tmp <- strsplit(colnames(agg_mat), "_") -->
+<!-- col_anno <- data.frame(row.names=colnames(agg_mat),  -->
+<!--                        Condition = sapply(tmp, `[`,1) |> factor(levels=c("uninfected","Hpy 2m inf")) ,  -->
+<!--                        Cluster = sapply(tmp, `[`,2)|> factor(levels=cluster_order)) -->
+
+<!-- agg_mat <- agg_mat[sel_markers_inf, order(col_anno[match(colnames(agg_mat), rownames(col_anno)),"Cluster"],  -->
+<!--                            col_anno[match(colnames(agg_mat), rownames(col_anno)),"Condition"])] -->
+
+<!-- anno_cols <- list(Condition=c("uninfected"="lightgreen","Hpy 2m inf"="red")) -->
+
+<!-- pheatmap(agg_mat, cluster_cols=F, cluster_rows = F, scale="row", gaps_col = seq(2, ncol(agg_mat)-2, 2) , breaks=c(-5,-3,seq(-2,2,4/96),3,5),  -->
+<!--          annotation_col = col_anno[,c("Condition"), drop=F], -->
+<!--          labels_col = col_anno[match(colnames(agg_mat), rownames(col_anno)), "Cluster"], -->
+<!--          annotation_colors = anno_cols, -->
+<!--          main="Scaled average expression of selected cytokines, Hpy vs. uninfected") -->
+
+<!-- pheatmap(agg_mat, cluster_cols=F, cluster_rows = F, scale="row", gaps_col = seq(2, ncol(agg_mat)-2, 2) , breaks=c(-5,-3,seq(-2,2,4/96),3,5),  -->
+<!--          annotation_col = col_anno[,c("Condition"), drop=F], -->
+<!--          labels_col = col_anno[match(colnames(agg_mat), rownames(col_anno)), "Cluster"], -->
+<!--          annotation_colors = anno_cols, -->
+<!--          main="Scaled average expression of selected cytokines, Hpy vs. uninfected",  -->
+<!--          filename = file.path(result_folder, "Inflammatory cytokines_Hpy_inf_Heatmap.pdf"), width = 8, height = 3) -->
+
+<!-- ``` -->
+
+
+<!-- ```{r, fig.width=8, fig.height=3} -->
+<!-- sel_mat <- AverageExpression(sd_bmp, assays = "RNA", features = sel_markers_inf, group.by = c("condition","cluster_label"))[["RNA"]] -->
+
+<!-- agg_mat <- as.matrix(sel_mat) -->
+
+<!-- tmp <- strsplit(colnames(agg_mat), "_") -->
+<!-- col_anno <- data.frame(row.names=colnames(agg_mat),  -->
+<!--                        Condition = sapply(tmp, `[`,1) |> factor(levels=c("WT","KO")) ,  -->
+<!--                        Cluster = sapply(tmp, `[`,2)|> factor(levels=cluster_order)) -->
+
+<!-- agg_mat <- agg_mat[sel_markers_inf, order(col_anno[match(colnames(agg_mat), rownames(col_anno)),"Cluster"],  -->
+<!--                            col_anno[match(colnames(agg_mat), rownames(col_anno)),"Condition"])] -->
+
+<!-- anno_cols <- list(Condition=c("WT"="lightgreen","KO"="red")) -->
+
+<!-- pheatmap(agg_mat, cluster_cols=F, cluster_rows = F, scale="row", gaps_col = seq(2, ncol(agg_mat)-2, 2) , breaks=c(-5,-3,seq(-2,2,4/96),3,5),  -->
+<!--          annotation_col = col_anno[,c("Condition"), drop=F], -->
+<!--          labels_col = col_anno[match(colnames(agg_mat), rownames(col_anno)), "Cluster"], -->
+<!--          annotation_colors = anno_cols, -->
+<!--          main="Scaled average expression of selected cytokines, Hpy vs. uninfected") -->
+
+<!-- pheatmap(agg_mat, cluster_cols=F, cluster_rows = F, scale="row", gaps_col = seq(2, ncol(agg_mat)-2, 2) , breaks=c(-5,-3,seq(-2,2,4/96),3,5),  -->
+<!--          annotation_col = col_anno[,c("Condition"), drop=F], -->
+<!--          labels_col = col_anno[match(colnames(agg_mat), rownames(col_anno)), "Cluster"], -->
+<!--          annotation_colors = anno_cols, -->
+<!--          main="Scaled average expression of selected cytokines, Bmpr1a KO vs. WT",  -->
+<!--          filename = file.path(result_folder, "Inflammatory cytokines_Bmpr1a_KO_Heatmap.pdf"), width = 8, height = 3) -->
+
+<!-- ``` -->
+
+<!-- ## Bmp pathway -->
+
+<!-- ```{r, fig.width=10, fig.height=6} -->
+<!-- sel_markers_inf <- c("Lgr5","Axin2","Ascl2","Bmpr1a","Id1","Id2","Bmp2","Bmp4","Krt20","Muc5ac","Muc6","Mki67") -->
+<!-- p1 <- dotplot_scRNA_multi_feature(sd_inf, cluster = "cluster_label", group = "condition", features = sel_markers_inf, scale=T, group_order = c("uninfected","Hpy 2m inf"), cluster_order = cluster_order) + ggtitle("Regenerative state genes - +/- Hpy infection") + xlab("") + ylab("") -->
+<!-- p1 -->
+
+<!-- p2 <- dotplot_scRNA_multi_feature(sd_bmp, cluster = "cluster_label", group = "condition", features = sel_markers_inf, scale=T, group_order = c("WT","KO"), cluster_order = cluster_order) + ggtitle("Inflammatory cytokines - Bmpr1a KO vs. WT") + xlab("") + ylab("") -->
+<!-- p2 -->
+<!-- ``` -->
+
+
+<!-- ```{r, fig.width=8, fig.height=6} -->
+<!-- sel_markers <- c("Bmp7", "Bmp2", "Bmp4", "Bmp5", "Ptger1", "Ptger2", "Ptger3", "Ptger4") -->
+
+<!-- for (gg in sel_markers) { -->
+<!--   p <- FeaturePlot(scData.combined, features = gg, order=T, raster = T, pt.size = 3, cols=c("grey80","red"), raster.dpi = c(1000,1000)) -->
+<!--   print(p) -->
+<!--   pdf(file.path(result_folder, paste0(gg,"_Epiv4.2.pdf")), width=6, height=5) -->
+<!--   print(p) -->
+<!--   dev.off() -->
+<!-- } -->
+<!-- ``` -->
+
+
+## Stromal markers
+
+### Subpopulation markers from McCarthy et al. (Nat Cell Biol 2020, p.1030 ff)
+
+```{r, fig.width=14, fig.height=6}
+sel_markers = unlist(strsplit("Wnt2b, Wnt4, Wnt5a, Rspo1, Rspo2, Rspo3, Dkk2, Dkk3, Sfrp1, Frzb, Wif1, Grem1, Grem2, Chrd, Bmp2, Bmp4, Bmp5, Bmp7, Cd34, Pdgfra, Foxl1, Gli1, Des, Id1, Id2", ", "))
+#sel_markers=human2mouse(sel_genes, db=homologeneData2)$mouseGene
+DefaultAssay(scData.combined) <- "RNA"
+
+DotPlot(scData.combined, features = sel_markers, scale =T, cols = "RdYlGn", assay = "RNA")  + theme(axis.text.x = element_text(angle=45, hjust=1))
+
+```
+
+
+### Subpopulation markers from Kinchen et al. (Fig. 3)
+
+Str 1: Cxcl12, Adamdec1, Sfrp2, Hcar2, Nxf7, 
+Str 2: Wnt5a, Bmp2, Sox6, Fgf9
+Str 3: Maff, Cd55, Pcolce12, Ackr4
+
+```{r, fig.width=14, fig.height=6}
+sel_markers = c("Cxcl12", "Adamdec1","Pcolce2","Ackr4", "Wnt5a","Bmp2","Sox6", "Fgf9", "Maff","Cd55", "Hcar2", "Nxf7", "Sfrp2")
+#sel_markers=human2mouse(sel_genes, db=homologeneData2)$mouseGene
+DefaultAssay(scData.combined) <- "RNA"
+
+DotPlot(scData.combined, features = sel_markers, scale =T, cols = "RdYlGn", assay = "RNA") + theme(axis.text.x = element_text(angle=45, hjust=1))
+```
+
+
+## MF markers
+
+```{r, fig.width=14, fig.height=6}
+sel_markers=human2mouse(c("ACTA2","TAGLN","ACTG2","MYH11"), db=homologeneData2)$mouseGene
+DefaultAssay(scData.combined) <- "RNA"
+
+DotPlot(scData.combined, features = sel_markers, scale =T, cols = "RdYlGn", assay = "RNA") + theme(axis.text.x = element_text(angle=45, hjust=1))
+
+```
+
+
+## Proliferation
+
+```{r, fig.width=14, fig.height=6}
+sel_markers=c("Top2a","Mki67","Pcna","Mcm3")
+DefaultAssay(scData.combined) <- "RNA"
+
+#plot_genes(scData.combined, sel_markers)
+DotPlot(scData.combined, features=sel_markers, cols="RdYlBu", assay="RNA")+ theme(axis.text.x=element_text(angle=45, hjust=1))
+```
+
+
+
+
+## Mitochondrial transcript proportion
+
+```{r}
+FeaturePlot(object = scData.combined,  features = "percent_mito", reduction="umap", label=T)
+```
+
+
+## Scores and RNA count per cluster
+
+```{r, fig.width=14, fig.height=6}
+VlnPlot(scData.combined, features = "percent_mito", ncol = 1, pt.size = 0.0)
+#VlnPlot(scData.combined, features = "HALLMARK_APOPTOSIS", ncol = 1, pt.size = 0.01)
+VlnPlot(scData.combined, features = "nCount_RNA", ncol = 1, pt.size = 0.0) + scale_y_log10()
+VlnPlot(scData.combined, features = "nFeature_RNA", ncol = 1, pt.size = 0.0)
+```
+
+```{r}
+FeaturePlot(object = scData.combined,  features = "nFeature_RNA", reduction="umap", label=T)
+```
+
+# Software versions
+
+```{r}
+sessionInfo()
+```
+
+
+

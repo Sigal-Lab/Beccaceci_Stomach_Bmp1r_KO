@@ -1,0 +1,27 @@
+ClusterID	Type	Label	Markers
+0	Epithelial	TA 1	Mki67,Mcm5
+1	Epithelial	SC	Lgr5,Muc6,Aqp5
+2	Epithelial	TA 2	Mki67,Top2a
+3	Epithelial	Pit cell 1	Muc5ac, Krt20
+4	Epithelial	Pit cell 2	Muc5ac, Pgc
+5	Stroma	Endothelial 1	Pecam1, Flt1
+6	Epithelial	Chief cell 1	Pga5, Cblif(GIF), 
+7	Epithelial	EEC 5	Chgb,Neurod1,Pax6,Cpe,Scg5,Scg7, Gastrin
+8	Epithelial	Tuft cell	Dclk1
+9	Epithelial	Epi MHCII	H2DMa,H2Eb1,H2Aa Cd74, Ifi74
+10	Stroma	Fibroblast	Dcn,Col3a1,Col1a1
+11	Stroma	Myofibroblast	Rarres2,Col6a1,Col1a1, Myh11, Acta2
+12	Epithelial	EEC 1	Chga,Chgb, Maoa,Maob
+13	Epithelial	EEC 2	Chga,Chgb, Sst
+14	Epithelial	Parietal cell	Atp4a/b
+15	Epithelial	EEC 3	Chga,Chgb, Maoa,Maob, Tph1, Sox2
+16	Epithelial	EEC 4	Chga,Chgb
+17	Stroma	Pericyte	Notch3,Rgs5,Acta2
+18	Stroma	Endothelial 2	Pecam1,Lyve1,Vwf
+19	Epithelial	Pit cell 3	Muc5ac, Gkn1, Krt20, Maoa/b, Fcgbp
+20	Mix	Leukocytes/Epi	Low UMI count, low feature count, Cd3/Cd8,Muc2,Cdx2
+21	Leukocyte	Leukocytes	Cd3,Cd8,Aif1,Ms4a1,Cd19
+22	Other	Decaying 2	Low UMI count, low feature count
+23	Epithelial	Squamous cell	Krt5,Krt14
+24	Epithelial	SC-IM	Lgr5,Muc3a, Muc20, Cdx2,Olfm4
+25	Stroma	Glia/Neuron	Sox10,S100b,Ncam1,Gfap
