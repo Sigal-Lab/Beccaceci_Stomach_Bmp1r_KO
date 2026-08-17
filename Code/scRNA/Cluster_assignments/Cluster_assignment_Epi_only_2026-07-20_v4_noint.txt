@@ -1,0 +1,16 @@
+ClusterID	Type	Label	Markers
+0	Epithelial	TA antral	MjV
+1	Epithelial	Pit/Surface mucous antral	Muc5ac, Sptssb,Tsku
+2	Epithelial	SC antral	Lgr5,Aqp5,Muc6
+3	Epithelial	Pit corpus	Muc5ac, Aldh3a1,Psca,Sctr
+4	Epithelial	Chief	Muc6,Pga5,Pgc, Cblif
+5	Epithelial	Epi inflamed	MHC-II
+6	Epithelial	G-cell	GAST,Chgb
+7	Epithelial	Tuft	Dclk1,Lgr5,Ascl2
+8	Epithelial	EC-like	Chga,Hdc,Maoa/b; Aqp8,Car4,Tff3; Vtn,Gc 
+9	Epithelial	EEC Sst	Sst
+10	Epithelial	TA corpus	Mki67,Muc5ac,Cenpa
+11	Epithelial	EEC Chga	Neurod1
+12	Epithelial	Parietal	Atp4a/b
+13	Epithelial	Enterochromaffine	Tph1,Chgb,Tac1
+14	Epithelial	Squamous	Sox2,Krt5, Trp63

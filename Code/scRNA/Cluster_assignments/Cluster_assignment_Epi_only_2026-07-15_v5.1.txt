@@ -1,0 +1,8 @@
+ClusterID	Type	Label	Markers
+0	Epithelial	TA/Progenitor	Mki67,Pcna
+1	Epithelial	Pit	Muc5ac, Sptssb,Tsku
+2	Epithelial	TA/Progenitor	Mki67,Mcm3
+3	Epithelial	Stem	Lgr5,Aqp5,Muc6
+4	Epithelial	Surface mucous	Muc5ac,Krt20,
+5	Other	stressed cells	Ccnl2, Vmp1, high Mt
+6	Epithelial	Intestinal-like	Low Pdx1; Muc6, Tff2; Muc2, Olfm4,Cdx2

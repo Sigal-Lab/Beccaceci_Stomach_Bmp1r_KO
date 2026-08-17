@@ -1,0 +1,77 @@
+---
+title: "Manqiang AKP Tm Epithelia + Stroma - Doublet detection"
+author: "Hilmar Berger"
+output: 
+ html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: false
+    number_sections: true
+    code_folding: hide
+    
+pdf_document:
+    fig_caption: true
+date: "`r format(Sys.time(), '%d %B, %Y %H:%M:%S')`"
+---
+
+```{r, message=FALSE}
+rm(list=ls())
+library(Seurat)
+library(ggplot2)
+library(scater)
+library(readxl)
+library(knitr)
+library(data.table)
+library(cowplot)
+
+library(pheatmap)
+
+library(scDblFinder)
+library(SummarizedExperiment)
+
+data_storage_folder = file.path("../../Data/scRNA/Processed")
+if (!file.exists(data_storage_folder)) dir.create(data_storage_folder, recursive=T)
+
+```
+
+# Overview
+
+We use unclustered scRNA (before preprocessing).
+
+```{r}
+load(file.path(data_storage_folder, "All_Filtered_scData.Rdata"))
+DefaultAssay(all_ge_data_filtered) <- "RNA"
+combined_sc_data <- JoinLayers(all_ge_data_filtered)
+rm(all_ge_data_filtered)
+gc()
+set.seed(20230829)
+
+```
+
+
+## Sample description
+
+```{r}
+table(combined_sc_data$orig.ident)
+```
+
+
+```{r, message=FALSE}
+data_file = file.path(data_storage_folder, "All_identified_doublets_scDblFinder.rds")
+
+library(BiocParallel)
+sce = as.SingleCellExperiment(combined_sc_data)
+sce <- scDblFinder(sce, samples="orig.ident", clusters = T, BPPARAM=MulticoreParam(8))
+
+table(sce$orig.ident, sce$scDblFinder.class)
+
+tmp <- colData(sce)
+saveRDS(tmp, file=data_file, compress=T)
+```
+
+
+# Software versions
+
+```{r}
+sessionInfo()
+```

@@ -1,0 +1,433 @@
+---
+title: "DGE in epithelial cells from Giulia Beccaceci scRNA from stromal Il1r1 KO and epithelial Bmpr1a KO models"
+author: "Hilmar Berger"
+output: 
+ html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: false
+    number_sections: true
+    code_folding: hide
+    
+pdf_document:
+    fig_caption: true
+date: "`r format(Sys.time(), '%d %B, %Y %H:%M:%S')`"
+---
+
+
+```{r, message=FALSE}
+rm(list=ls())
+library(Seurat)
+library(ggplot2)
+
+library(readxl)
+library(writexl)
+library(knitr)
+library(data.table)
+library(cowplot)
+
+library(homologene)
+
+library(pheatmap)
+library(EnhancedVolcano)
+library(naturalsort)
+
+library(clusterProfiler)
+options(connectionObserver = NULL) # temporary fix for RStudio issue with RSQLite
+library(org.Hs.eg.db)
+library(ReactomePA)
+library(msigdbr)
+
+library(future)
+library(future.apply)
+#plan(multicore, workers=8)
+plan(multisession, workers=8) # this does not provide a relevant improvement in performance under Win10
+
+source("../Rutils/enrichment_helpers_v2.R")
+source("../Rutils/DotPlot_fixed.R")
+source("../Rutils/Pseudo_bulk_DGE_helpers.R")
+
+result_folder = "../../Results/scRNA/epithelial"
+if (!file.exists(result_folder)) dir.create(result_folder, recursive=T)
+
+data_storage_folder = "../../Data/scRNA/Processed"
+if (!file.exists(data_storage_folder)) dir.create(data_storage_folder, recursive=T)
+
+rerun_dge_analyses = T
+rerun_enrichment_analyses = T
+```
+
+
+```{r}
+project_name = "_Beccaceci_epithelial_v4.2_"
+```
+
+
+```{r}
+preprocessed_data_file = file.path(data_storage_folder, "Giulia_Il1r1_Bmpr1a_Harmony_Epi_only_v4_CCadj.rds")
+scData.combined <- readRDS(preprocessed_data_file)
+DefaultAssay(scData.combined) <- "RNA"
+scData.combined <- JoinLayers(scData.combined)
+
+meta <- readRDS(file=file.path(data_storage_folder, "Giulia_Il1r1_Bmpr1a_Harmony_epi_Metadata_v4.2_CCadj.rds"))
+scData.combined@meta.data <- meta[Cells(scData.combined),]
+```
+
+
+
+```{r}
+secreted_genes_human = read_excel("../../Data/External/GeneSets/Human_Secretome_aaz0274_Data_file_S2.xlsx", sheet=1)
+mouse_to_human = human2mouse(secreted_genes_human$`Gene name`, db = homologeneData2)
+ 
+secreted_genes_mouse = merge(secreted_genes_human, mouse_to_human,by.x="Gene name", by.y="humanGene",sort=F)
+secreted_genes_mouse = unique(secreted_genes_mouse[, c("Annotated category","mouseGene","mouseID")])
+
+secreted_genes_mouse2 <- as.data.frame(tapply(secreted_genes_mouse$`Annotated category`, secreted_genes_mouse$mouseGene, paste0, collapse = ","))
+colnames(secreted_genes_mouse2) <- "Secretion_type"
+
+library(msigdbr)
+m_t2g <- msigdbr(species = "Mus musculus", category = "C5", subcategory = "GO:BP")[, c("gs_name", "gene_symbol")]
+Mm_immune_genes = subset(m_t2g, grepl("IMMUNE", gs_name))$gene_symbol |> sort() |> unique()
+```
+
+
+
+# Overview
+
+# Cluster overview
+
+
+```{r, fig.width=7, fig.height=5}
+scData.combined <- SetIdent(scData.combined, value = "cluster_label")
+DimPlot(scData.combined, label=T) + NoLegend()
+```
+
+```{r, fig.width=15, fig.height=5}
+DimPlot(scData.combined, label=T, split.by = "group", ncol=4) + NoLegend()
+```
+
+```{r}
+all_clusters_tab = unique(as.data.frame(scData.combined@meta.data[, c("seurat_clusters", "cluster_label")]))
+rownames(all_clusters_tab) = as.character(all_clusters_tab$seurat_clusters)
+all_clusters_tab = all_clusters_tab[order(all_clusters_tab$seurat_clusters),]
+```
+
+
+```{r}
+# Seurat::FindMarkers and Seurat::FindAllMarkers use a min.pct=0.01 parameter to pre-filter genes that will be tested. 
+# That means that the universe of genes is restricted to those detected in at least 10% of samples in at least one group.
+# Here we compute the proportion of cells with detection for each gene and each cluster and then define the universe for enrichment accordingly.
+
+dge_universe <- get_FindMarkers_universe(scData.combined)
+
+```
+
+
+```{r}
+load("../../Data/External/GeneSets/Custom_Genesets_2025-11-28.RData")
+```
+
+
+# Functional enrichment of cluster marker genes - control conditions only
+
+```{r}
+if(rerun_dge_analyses) {
+  cluster_markers <- FindAllMarkers(object = subset(scData.combined, group %in% c("Stromal IL1r1 WT uninfected","epiBmpr1aWT uninfected")), only.pos = TRUE, assay = "RNA")
+  cluster_markers$diff.pct <- cluster_markers$pct.1 - cluster_markers$pct.2
+  saveRDS(cluster_markers, file=file.path(data_storage_folder, "All_cluster_markers_Epi_only_control_cells_v4.2_CCadj.rds"))
+  write_xlsx(cluster_markers,file.path(result_folder, "All_cluster_markers_Epi_only_control_cells_v4.2_CCadj.xlsx"))
+} else {
+  cluster_markers <- readRDS(file.path(data_storage_folder, "All_cluster_markers_Epi_only_control_cells_v4.2_CCadj.rds"))
+}
+
+```
+
+
+```{r}
+title <- "Beccaceci_Epi_only_controls_cluster_markers_"
+result_file = paste0("Beccaceci_Epi_only_control_celltype_markers_enrichment_v4.2_CCadj.Rdata")
+
+cluster_markers$celltype = cluster_markers$cluster
+
+if(rerun_enrichment_analyses) {
+  cluster_markers_sig <- subset(cluster_markers, p_val_adj < 0.05 & avg_log2FC > 0.8 & diff.pct > 0.1)
+  
+  res = compute_functional_enrichment(scData.combined, 
+                                                  cluster_markers_sig,
+                                                  gene_col = "gene", 
+                                                  universe = dge_universe, 
+                                                  species = "Mm",
+                                                  custom_sets_Hs = lapply(custom_gene_sets_human, function(x) x$gene),
+                                                  custom_sets_Mm = lapply(custom_gene_sets_mouse, function(x) x$gene))
+  all_enrichments <- res$clustprof_enrichments
+  output_tables <- res$output_tables
+  save(all_enrichments, file=file.path(data_storage_folder, result_file))
+  write_xlsx(output_tables, path=file.path(result_folder,paste0("DGE_",title,"_enrichments_all.xlsx")))
+} else {
+  load(file.path(data_storage_folder, result_file))
+}
+```
+
+```{r, fig.width=18, fig.height=16}
+for (n in sort(names(all_enrichments))) {
+  p = my_dotplot(all_enrichments[[n]]) + theme(axis.text.x = element_text(angle = 90, hjust = 1)) + ggtitle(n)
+  print(p)
+}
+```
+
+
+# Differential expression analysis between experimental conditions 
+
+
+```{r}
+library(org.Mm.eg.db)
+gs_to_name <- AnnotationDbi::select(org.Mm.eg.db, keys = Features(scData.combined,assay = "RNA"),keytype="SYMBOL", columns="GENENAME")
+rownames(gs_to_name) <- gs_to_name$SYMBOL
+```
+
+
+```{r}
+annotate_results <- function(res) {
+  res <- lapply(res, function(x) {
+    x$Immune_gene = ifelse(x$GeneSymbol %in% Mm_immune_genes, "X", "")
+    x$Secretion_type <- secreted_genes_mouse2[match(x$GeneSymbol, rownames(secreted_genes_mouse2)), "Secretion_type"]
+    x
+  })
+
+  res <- lapply(res, function(x) {x$GeneName <- gs_to_name[x$GeneSymbol,"GENENAME"]; x})
+
+  res <- lapply(res, function(x) {
+    x <- x[, c("GeneSymbol","GeneName","log2FoldChange","pvalue","padj","baseMean","Immune_gene","Secretion_type")]
+    x
+  })
+  
+  return(res)
+}
+```
+
+
+
+
+
+## In Axin2CreErt2-Bmpr1afl/fl samples: KO vs WT for each cluster, Pseudo-Bulk
+
+
+```{r, message = FALSE, warning = FALSE}
+sel_clusters = unique(as.character(scData.combined$cluster_label))
+sel_clusters <- sel_clusters[!sel_clusters %in% c("Enterocyte/EEC/other","Surface mucus dying ","Squamous")]
+
+if(rerun_dge_analyses) {
+  all_res <- list()
+  
+  for (cc in sel_clusters) {
+    
+    sel_data <- scData.combined[,scData.combined$cluster_label ==cc & 
+                                scData.combined$genotype %in% c("Axin2CreErt2-Bmpr1afl/fl KO","Axin2CreErt2-Bmpr1afl/fl WT")]
+    
+    #sel_data$krt20_bmp2_class2 <- gsub("\\+","pos", gsub("\\-", "neg", sel_data$krt20_bmp2_class))
+  
+    count_matrices <- seurat_to_cell_type_matrices(sel_data, "genotype", "sampleID")
+    
+    if(length(count_matrices) < 2) {warning(paste("Did not find both treatment groups for cluster ", cc, ". Skipping.")); next; }
+  
+    tmp <- compute_diff(count_matrices, control_cluster = "Axin2CreErt2-Bmpr1afl/fl WT")
+    names(tmp) <- "KO_vs_WT"
+    names(tmp) <- paste0(cc, "_", names(tmp))
+    
+    tmp <- annotate_results(tmp)
+    
+    all_res = append(all_res, tmp)
+    
+  }
+  
+  saveRDS(all_res, file.path(data_storage_folder, "PseudoBulk_DGE_Each_cluster_Axin2CreErt2-Bmpr1a_KO_vs_WT_Epi_only_v4.2_CCadj.rds"), compress=T)
+  ar2 <- lapply(all_res, function(x) {x[order(x$log2FoldChange, decreasing = T),]} )
+  names(ar2) <- make.names(names(ar2))
+  write_xlsx(ar2, path=file.path(result_folder, "PseudoBulk_DGE_Each_cluster_Axin2CreErt2-Bmpr1a_KO_vs_WT_Epi_only_v4.2_CCadj.xlsx"))
+  
+  tmp <- mapply(function(x, n) {x$celltype <- n; x}, all_res, names(all_res), SIMPLIFY = F) |> do.call(rbind, args = _ )
+  tmp$logFC_sig <- ifelse(tmp$padj > 0.05, NA, tmp$log2FoldChange)
+  tmp2 <- reshape2::dcast(tmp, GeneSymbol + GeneName + Secretion_type ~ celltype, value.var = "logFC_sig")
+  write_xlsx(tmp2, path = file.path(result_folder, "PseudoBulk_DGE_Each_cluster_Axin2CreErt2-Bmpr1a_KO_vs_WT_Epi_only_celltype_comparison_FDRlt0.05_v4.2_CCadj.xlsx"))
+  
+} else {
+  all_res <- readRDS(file.path(data_storage_folder, "PseudoBulk_DGE_Each_cluster_Axin2CreErt2-Bmpr1a_KO_vs_WT_Epi_only_v4.2_CCadj.rds"))
+  ar2 <- lapply(all_res, function(x) {x[order(x$log2FoldChange, decreasing = T),]} )
+  names(ar2) <- make.names(names(ar2))
+}
+```
+
+
+### Volcano plots
+
+```{r, fig.width=16, fig.height=6}
+dge_results <- all_res
+for (f in names(dge_results) |> sort()) {
+    tmp = dge_results[[f]]
+    p = EnhancedVolcano(tmp,
+                        lab = tmp$GeneSymbol,
+                        x = 'log2FoldChange',
+                        y = 'padj',
+                        pCutoff = .2, 
+                        title=f)
+    print(p)
+  
+}
+```
+
+
+
+### Functional enrichment of genes differentially expressed between conditions
+
+#### Significant genes at FDR < 5% per comparison
+
+```{r}
+dge_results_all = mapply(function(x, n) {x$comparison = n; x}, all_res, names(all_res), SIMPLIFY = F ) |> do.call(rbind, args = _) |> subset(padj < 0.05)
+```
+
+
+```{r}
+title = "Axin2CreErt2-Bmpr1a_KO_vs_WT_by_cluster_v4.2_CCadj"
+result_file = paste0("DGE_",title,"_",project_name,"_by_celltype_enrichment.Rdata")
+
+dge_results_all$comparison_short <- gsub("Surface mucus dying", "Surface dying", dge_results_all$comparison)
+
+if(rerun_enrichment_analyses) {
+  dge_results_sig <- subset(dge_results_all, padj < 0.2 & pvalue < 0.05 & abs(log2FoldChange) > 0.8)
+  res = compute_functional_enrichment(scData.combined, 
+                                      dge_results_sig,
+                                      species = "Mm",
+                                      log2FC_col = "log2FoldChange", 
+                                      celltype_col = "comparison_short",
+                                      custom_sets_Hs = lapply(custom_gene_sets_human, function(x) x$gene),
+                                      custom_sets_Mm = lapply(custom_gene_sets_mouse, function(x) x$gene))
+  all_enrichments <- res$clustprof_enrichments
+  output_tables <- res$output_tables
+  save(all_enrichments, file=file.path(data_storage_folder, result_file))
+  write_xlsx(output_tables, path=file.path(result_folder,paste0("DGE_",title,"_enrichments_all.xlsx")))
+} else {
+  load(file.path(data_storage_folder, result_file))
+}
+```
+
+
+```{r, fig.width=18, fig.height=16}
+for (n in sort(names(all_enrichments))) {
+  p = my_dotplot(all_enrichments[[n]]) + theme(axis.text.x = element_text(angle = 90, hjust = 1)) + ggtitle(n)
+  print(p)
+}
+```
+
+
+## In Col1a2CreErt2-Il1r1 samples: Hpy vs. uninfected for each cluster, Pseudo-Bulk
+
+
+```{r, message = FALSE, warning = FALSE}
+sel_clusters = unique(as.character(scData.combined$cluster_label))
+sel_clusters <- sel_clusters[!sel_clusters %in% c("Enterocyte/EEC/other","Surface mucus dying ","Squamous")]
+
+if(rerun_dge_analyses) {
+  all_res <- list()
+  
+  for (cc in sel_clusters) {
+    
+    sel_data <- scData.combined[,scData.combined$cluster_label ==cc & 
+                                scData.combined$genotype %in% c("Col1a2CreErt2-Il1r1fl/fl WT")]
+    
+    count_matrices <- seurat_to_cell_type_matrices(sel_data, "group", "sampleID")
+    
+    if(length(count_matrices) < 2) {warning(paste("Did not find both treatment groups for cluster ", cc, ". Skipping.")); next; }
+  
+    tmp <- compute_diff(count_matrices, control_cluster = "Stromal IL1r1 WT uninfected")
+    names(tmp) <- "Hp_vs_ui"
+    names(tmp) <- paste0(cc, "_", names(tmp))
+    
+    tmp <- annotate_results(tmp)
+    
+    all_res = append(all_res, tmp)
+    
+  }
+  
+  saveRDS(all_res, file.path(data_storage_folder, "PseudoBulk_DGE_Each_cluster_Col1a2CreErt2-Il1r1_Hpy_vs_Uninf_Epi_only_v4.2_CCadj.rds"), compress=T)
+  ar2 <- lapply(all_res, function(x) {x[order(x$log2FoldChange, decreasing = T),]} )
+  names(ar2) <- make.names(names(ar2))
+  write_xlsx(ar2, path=file.path(result_folder, "PseudoBulk_DGE_Each_cluster_Col1a2CreErt2-Il1r1_Hpy_vs_Uninf_Epi_only_v4.2_CCadj.xlsx"))
+  
+    tmp <- mapply(function(x, n) {x$celltype <- n; x}, all_res, names(all_res), SIMPLIFY = F) |> do.call(rbind, args = _ )
+  tmp$logFC_sig <- ifelse(tmp$padj > 0.05, NA, tmp$log2FoldChange)
+  tmp2 <- reshape2::dcast(tmp, GeneSymbol + GeneName + Secretion_type ~ celltype, value.var = "logFC_sig")
+  write_xlsx(tmp2, path = file.path(result_folder, "PseudoBulk_DGE_Each_cluster_Col1a2CreErt2-Il1r1_Hpy_vs_Uninf_Epi_only_celltype_comparison_FDRlt0.05_v4.2_CCadj.xlsx"))
+  
+} else {
+  all_res <- readRDS(file.path(data_storage_folder, "PseudoBulk_DGE_Each_cluster_Col1a2CreErt2-Il1r1_Hpy_vs_Uninf_Epi_only_v4.2_CCadj.rds"))
+  ar2 <- lapply(all_res, function(x) {x[order(x$log2FoldChange, decreasing = T),]} )
+  names(ar2) <- make.names(names(ar2))
+}
+```
+
+
+### Volcano plots
+
+```{r, fig.width=16, fig.height=6}
+dge_results <- all_res
+for (f in names(dge_results) |> sort()) {
+    tmp = dge_results[[f]]
+    p = EnhancedVolcano(tmp,
+                        lab = tmp$GeneSymbol,
+                        x = 'log2FoldChange',
+                        y = 'padj',
+                        pCutoff = .2, 
+                        title=f)
+    print(p)
+  
+}
+```
+
+
+### Functional enrichment of genes differentially expressed between conditions
+
+#### Significant genes at FDR < 5% per comparison
+
+```{r}
+dge_results_all = mapply(function(x, n) {x$comparison = n; x}, all_res, names(all_res), SIMPLIFY = F ) |> do.call(rbind, args = _) |> subset(padj < 0.05)
+```
+
+
+```{r}
+title = "Col1a2CreErt2-Il1r1_Hpy_vs_Uninf_by_cluster_v4.2_CCadj"
+result_file = paste0("DGE_",title,"_",project_name,"_by_celltype_enrichment.Rdata")
+
+dge_results_all$comparison_short <- gsub("Surface mucus dying", "Surface dying", dge_results_all$comparison)
+
+if(rerun_enrichment_analyses) {
+  dge_results_sig <- subset(dge_results_all, padj < 0.2 & pvalue < 0.05 & abs(log2FoldChange) > 0.8)
+  res = compute_functional_enrichment(scData.combined, 
+                                      dge_results_sig,
+                                      species = "Mm",
+                                      log2FC_col = "log2FoldChange", 
+                                      celltype_col = "comparison_short",
+                                      custom_sets_Hs = lapply(custom_gene_sets_human, function(x) x$gene),
+                                      custom_sets_Mm = lapply(custom_gene_sets_mouse, function(x) x$gene))
+  all_enrichments <- res$clustprof_enrichments
+  output_tables <- res$output_tables
+  save(all_enrichments, file=file.path(data_storage_folder, result_file))
+  write_xlsx(output_tables, path=file.path(result_folder,paste0("DGE_",title,"_enrichments_all.xlsx")))
+} else {
+  load(file.path(data_storage_folder, result_file))
+}
+```
+
+
+```{r, fig.width=18, fig.height=16}
+for (n in sort(names(all_enrichments))) {
+  p = my_dotplot(all_enrichments[[n]]) + theme(axis.text.x = element_text(angle = 90, hjust = 1)) + ggtitle(n)
+  print(p)
+}
+```
+
+# Software versions
+
+```{r}
+sessionInfo()
+```
+

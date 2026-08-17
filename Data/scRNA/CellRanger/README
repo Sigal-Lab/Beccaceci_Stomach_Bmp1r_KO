@@ -1,0 +1,2 @@
+Download CellRanger processed data (GSE319373_RAW.tar from supplementary file section) from https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE319373 to this folder. 
+Then run python script split_files.py from this folder to move the input files of each sample to a separate folder. 

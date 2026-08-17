@@ -1,0 +1,149 @@
+---
+title: "Giulia Beccaceci scRNA of epithelial + stromal cells from stromal Il1r1 KO and epithelial Bmpr1a KO models - Preprocessing"
+author: "Hilmar Berger"
+output: 
+ html_document:
+    toc: true
+    toc_depth: 3
+    toc_float: false
+    number_sections: true
+    code_folding: hide
+    
+pdf_document:
+    fig_caption: true
+date: "`r format(Sys.time(), '%d %B, %Y %H:%M:%S')`"
+---
+
+```{r, message=FALSE}
+library(Seurat)
+#library(SeuratDisk)
+library(ggplot2)
+
+library(readxl)
+library(knitr)
+library(data.table)
+library(cowplot)
+library(magrittr)
+
+library(harmony)
+
+library(homologene)
+
+library(pheatmap)
+
+library(future)
+plan("multicore", workers = 10)
+options(future.globals.maxSize = 10*2**32)
+
+data_storage_folder = file.path("../../Data/scRNA/Processed")
+if (!file.exists(data_storage_folder)) dir.create(data_storage_folder, recursive=T)
+
+set.seed(20230829)
+
+```
+
+```{r}
+reload_data = T
+if(reload_data) {
+  load(file.path(data_storage_folder, "All_Filtered_scData.Rdata"))
+}
+```
+
+
+We here use standard normalization followed by batch integration using Harmony (without adjusting for cell cycle or MT content). Layers are joined before further processing to obtain variable features that are also variable between samples. 
+
+```{r}
+if(reload_data) {
+  combined_sc_data <- NormalizeData(object = JoinLayers(all_ge_data_filtered), normalization.method = "LogNormalize", scale.factor = 1e4)
+  combined_sc_data <- FindVariableFeatures(object = combined_sc_data, selection.method = "vst")
+}  
+```
+
+```{r}
+if(reload_data) {
+  combined_sc_data <- ScaleData(object = combined_sc_data)
+  combined_sc_data <- RunPCA(combined_sc_data, verbose = FALSE)
+  combined_sc_data <- RunHarmony(object = combined_sc_data,
+                                    reduction.use = "pca",
+                                    dims.use = 1:50,
+                                    group.by.vars = "orig.ident",
+                                    plot_convergence = TRUE)
+  combined_sc_data <- RunUMAP(combined_sc_data, reduction = "harmony", dims = 1:30, verbose = FALSE)
+  combined_sc_data <- FindNeighbors(combined_sc_data, reduction = "harmony", dims = 1:30)
+  combined_sc_data <- FindClusters(combined_sc_data, resolution = 0.3)
+  scData.combined = combined_sc_data
+}
+```
+
+
+```{r}
+preprocessed_data_file = file.path(data_storage_folder, "Giulia_Il1r1_Bmpr1a_Harmony.rds")
+if(reload_data) {
+  saveRDS(scData.combined, file=preprocessed_data_file, compress = T)
+} else {
+  scData.combined <- readRDS(preprocessed_data_file)
+}
+```
+
+# Global clusters
+
+```{r, fig.width=14, fig.height=6}
+scData.combined <- SetIdent(scData.combined, value="seurat_clusters")
+DimPlot(scData.combined, reduction = "umap", group.by = "orig.ident", raster = T)
+
+DimPlot(scData.combined, reduction = "umap", group.by = c("genotype", "tissue_site"), raster=T)
+
+p1 <- DimPlot(scData.combined, reduction = "umap", group.by ="group", raster=T)
+p2 <- DimPlot(scData.combined, reduction = "umap", label = TRUE, raster=T)
+plot_grid(p1, p2)
+
+DimPlot(scData.combined, reduction = "umap", split.by = "orig.ident", label = T, raster=T, ncol=4, pt.size = 2)
+```
+
+
+## Cluster assignments
+
+```{r}
+m = table(scData.combined@meta.data$seurat_clusters, scData.combined@meta.data$orig.ident)
+#kable(m)
+```
+
+
+```{r, fig.height=6, fig.width=12}
+mm = as.matrix.data.frame(m)
+colnames(mm) = colnames(m)
+rownames(mm) = rownames(m)
+mm_rel = sweep(mm, 2, apply(mm, 2,sum), "/")
+pheatmap(mm_rel, main="Relative single cell contribution of each cluster to condition totals")
+```
+
+
+
+## Global markers
+
+```{r, fig.width=14, fig.height=6}
+sel_markers=c("Ptprc","Tcrb","Ly6g","Pglyrp1","Cd4","Cd3e","Cd3d","Cd3g", "Gata3","Cxcr6","Rora","Cd7","Cd8a","Cd19","Ms4a1","Ly6a", "Cd34","Aif1","Cd68","Flt3", "Vim","Col1a1","Acta2","Krt20","Epcam","Lgr5","Axin2","Pecam1","Lyve1","Vwf")
+DefaultAssay(scData.combined) <- "RNA"
+
+DotPlot(scData.combined, sel_markers, cols = "RdYlBu", assay = "RNA", scale=T) + theme(axis.text.x=element_text(angle=45, hjust = 1))
+```
+
+## Scores and RNA count per cluster
+
+```{r, fig.width=14, fig.height=6}
+VlnPlot(scData.combined, features = "percent_mito", ncol = 1, pt.size = 0.0)
+VlnPlot(scData.combined, features = "nCount_RNA", ncol = 1, pt.size = 0.0) + scale_y_log10()
+VlnPlot(scData.combined, features = "nFeature_RNA", ncol = 1, pt.size = 0.0)
+```
+
+```{r}
+FeaturePlot(scData.combined, "nCount_RNA", order=T, max.cutoff = 30000)
+```
+
+
+# Software versions
+
+```{r}
+sessionInfo()
+```
+
