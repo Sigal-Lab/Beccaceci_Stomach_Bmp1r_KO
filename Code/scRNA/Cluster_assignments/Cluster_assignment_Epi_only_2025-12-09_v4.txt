@@ -1,0 +1,26 @@
+ClusterID	Type	Label	Markers
+0	Epithelial	Antral-pro Cldn2 Muc4	Cldn2,Muc4
+1	Epithelial	Pit corpus	Muc5ac, Aldh3a1,Psca,Sctr
+2	Epithelial	TA antral	MjV
+3	Epithelial	TA antral	MjV
+4	Epithelial	Pit antral	Muc5ac, Sptssb,Tsku
+5	Epithelial	TA corpus	Mki67,Muc5ac,Cenpa
+6	Epithelial	TA corpus	MjV
+7	Epithelial	SC antral	Lgr5,Aqp5,Muc6
+8	Epithelial	Chief-Pro	Muc6,Pga5,Pgc
+9	Epithelial	G-cell	GAST,Chgb
+10	Epithelial	Pit antral early	Muc5ac, Sptssb, Gstm3
+11	Epithelial	Surface mucus Krt20	Muc5ac,Krt20,
+12	Epithelial	Tuft	Dclk1,Lgr5,Ascl2
+13	Epithelial	EC-like cell	Chga,Hdc,Maoa/b; Aqp8,Car4,Tff3; Vtn,Gc 
+14	Epithelial	TA corpus	MjV
+15	Epithelial	EEC Sst	Sst
+16	Epithelial	Surface mucus dying 	Muc5ac,Krt20; High Mt
+17	Epithelial	EEC Tph1	Tph1,Sox2,Chgb
+18	Epithelial	EEC Chga	Neurod1
+19	Epithelial	Parietal	Atp4a/b
+20	Epithelial	Chief/Parietal	Pgc,Cblif
+21	Epithelial	Pit antral	MjV
+22	Epithelial	EEC Neurog3	Neurog3,Dll3,Ascl1,Mfng
+23	Epithelial	Squamous	Sox2,Krt5, Trp63
+24	Epithelial	EEC Sst dying	Dach1,Cntfr,Isl1,Sst; higher Mt, lower UMI counts
