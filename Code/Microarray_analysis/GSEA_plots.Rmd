@@ -78,6 +78,8 @@ rownames(mouse_to_human) = mouse_to_human$GeneSymbol
 ```{r}
 selected_genesets = c("Lgr5_SC_Signature_Munoz", "GO_DNA_BIOSYNTHETIC_PROCESS", "VECCHI_GASTRIC_CANCER_EARLY_UP", 
                       "Yui_DSS_colitis_vs_control_down", "Yui_DSS_colitis_vs_control_up", "Nozaki_SPEM_up", "Nozaki_SPEM_down",
+                      "Wang_Yap_signature","Vallone_Fetal_SI_and_Stomach_Spheroid_Signature","Vallone_Trop2_Signature",
+                      "Gil_Vazquez_RSC_signature_mouse",
                       "Gregorieff_Yap_comb.FC_up", "Gregorieff_Yap_comb.FC_down",
                       "Gregorieff_Yap_KO_up", "Gregorieff_Yap_KO_down",
                       "Gregorieff_Yap_Tg_up", "Gregorieff_Yap_Tg_down")

@@ -68,68 +68,80 @@ gsea_gmt_files
 
 # Other gene sets 
 
-## Stem cell/beta catenin signatures
+<!-- ## Stem cell/beta catenin signatures -->
 
-  - Munoz et al Small Intestinal Stem Cell Signature (PMID: 22692129, DOI: 10.1038/emboj.2012.166, Supp Table S3 )
-  - From Barker et al 2010 we include the SC signature of stomach antral Lgr5 cells
-  - Herbst et al Beta-catenine target genes (human, PMID: 24467841)
-  - SPEM signature (Nozaki et al. Gastroenterology 2008, p.511; supp tables 2/3)
-  - YAP-signature (Gregorieff et al. Nature 2015, p.715; supp table 1). We derived three signatures: The original, combined FC of FC(KO)/FC(Tg) and the individual signatures for KO and transgene (Tg)
-  - Fetal vs. adult intestinal cells (Guiu et al. Nature 2019, p.107; derived from published microarray data)
-  - DSS Sca+ vs. Non-DSS (Yui et al. Cell Stem Cell 2017, p.35; derived from published microarray data) 
-  - SPEM signature (Nozaki et al. Gastroenterology 2008, p.511; supp tables 2/3)
-  
+<!--   - Munoz et al Small Intestinal Stem Cell Signature (PMID: 22692129, DOI: 10.1038/emboj.2012.166, Supp Table S3 ) -->
+<!--   - From Barker et al 2010 we include the SC signature of stomach antral Lgr5 cells -->
+<!--   - Herbst et al Beta-catenine target genes (human, PMID: 24467841) -->
+<!--   - SPEM signature (Nozaki et al. Gastroenterology 2008, p.511; supp tables 2/3) -->
+<!--   - YAP-signature (Gregorieff et al. Nature 2015, p.715; supp table 1). We derived three signatures: The original, combined FC of FC(KO)/FC(Tg) and the individual signatures for KO and transgene (Tg) -->
+<!--   - Fetal vs. adult intestinal cells (Guiu et al. Nature 2019, p.107; derived from published microarray data) -->
+<!--   - DSS Sca+ vs. Non-DSS (Yui et al. Cell Stem Cell 2017, p.35; derived from published microarray data)  -->
+<!--   - SPEM signature (Nozaki et al. Gastroenterology 2008, p.511; supp tables 2/3) -->
 
-Note that the Parietal signature from Ramsey et al contains a large fraction of interferon signaling associated genes. Since there is only a single replicate in this data set it is not clear if this is an artefact or real biological differences. 
 
-  
+<!-- Note that the Parietal signature from Ramsey et al contains a large fraction of interferon signaling associated genes. Since there is only a single replicate in this data set it is not clear if this is an artefact or real biological differences.  -->
+
+
+<!-- ```{r} -->
+<!-- known_genes = unique(all_results[[1]]$GeneSymbol) -->
+
+<!-- custom_gene_sets_human = list() -->
+
+<!-- beta_cat_genes = as.data.frame(read_excel("../../Data/External/GeneSets/Wnt target H2014 list.xls", sheet = 1, col_names = F)) -->
+<!-- custom_gene_sets_human[["Herbst_et_al_Beta_catenin_targets"]] = unique(beta_cat_genes[, 1]) -->
+
+
+<!-- ######################################################################################## -->
+<!-- custom_gene_sets_mouse = list() -->
+
+<!-- spem_sig = read.table("../../Data/External/Nozaki_et_al_2008/SPEM_signature.txt", sep="\t", header=T, stringsAsFactors = F) -->
+<!-- custom_gene_sets_mouse[["Nozaki_SPEM_up"]] = subset(spem_sig, direction == "Up" & !is.na(GeneSymbol))$GeneSymbol -->
+<!-- custom_gene_sets_mouse[["Nozaki_SPEM_down"]] = subset(spem_sig, direction == "Down" & !is.na(GeneSymbol))$GeneSymbol -->
+
+<!-- tmp = read.table("../../Data/External/GeneSets/Supp_Table_S3_GE_combined_SC_Signature.txt", sep="\t", header=T, stringsAsFactors = F) -->
+<!-- custom_gene_sets_mouse[["Lgr5_SC_Signature_Munoz"]] = unique(tmp$GeneSymbol) -->
+
+<!-- tmp = as.data.frame(read_excel("../../Data/External/GeneSets/Barker2010_Stomach/antral lgr5 signature from barker 2010.xls",sheet=1)) -->
+<!-- custom_gene_sets_mouse[["Barker_Antral_SC"]] = unique(tmp[2:nrow(tmp),1]) -->
+
+<!-- tmp = as.data.frame(read_excel("../../Data/External/GeneSets/Gregorieff_et_al/41586_2015_BFnature15382_MOESM27_ESM_Supp_Table_1.xlsx", sheet = 1)) -->
+
+<!-- custom_gene_sets_mouse[["Gregorieff_Yap_comb.FC_up"]] = subset(tmp, Fold_log2 > 1 )$Gene_Symbol -->
+<!-- custom_gene_sets_mouse[["Gregorieff_Yap_comb.FC_down"]] = subset(tmp, Fold_log2 < -1 )$Gene_Symbol -->
+
+<!-- custom_gene_sets_mouse[["Gregorieff_Yap_KO_up"]] = subset(tmp, Yap_KO_log2FC > 1 )$Gene_Symbol -->
+<!-- custom_gene_sets_mouse[["Gregorieff_Yap_KO_down"]] = subset(tmp, Yap_KO_log2FC < -1 )$Gene_Symbol -->
+
+<!-- custom_gene_sets_mouse[["Gregorieff_Yap_Tg_up"]] = subset(tmp, Yap_TG_log2FC > 1 )$Gene_Symbol -->
+<!-- custom_gene_sets_mouse[["Gregorieff_Yap_Tg_down"]] = subset(tmp, Yap_TG_log2FC < -1 )$Gene_Symbol -->
+
+
+<!-- tmp = read.table("../../Data/External/Yui_et_al_CSC_2018/Colitis_vs_control/DGE_Colitis_vs_control.txt", sep="\t", header=T, stringsAsFactors = F) -->
+
+<!-- custom_gene_sets_mouse[["Yui_DSS_colitis_vs_control_up"]] = subset(tmp, logFC > 1 & adj.P.Val < 0.05)$SYMBOL -->
+<!-- custom_gene_sets_mouse[["Yui_DSS_colitis_vs_control_down"]] = subset(tmp, logFC < -1 & adj.P.Val < 0.05)$SYMBOL -->
+
+
+<!-- tmp = read.table("../../Data/External/Yui_et_al_CSC_2018/Fetal_Adult/DGE_Fetal_vs_Adult.txt", sep="\t", header=T, stringsAsFactors = F) -->
+
+<!-- custom_gene_sets_mouse[["Yui_Fetal_vs_adult_up"]] = subset(tmp, logFC > 1 & adj.P.Val < 0.05)$SYMBOL -->
+<!-- custom_gene_sets_mouse[["Yui_Fetal_vs_adult_down"]] = subset(tmp, logFC < -1 & adj.P.Val < 0.05)$SYMBOL -->
+
+
+<!-- gset_collections_mouse = list(CUSTOM_MOUSE=custom_gene_sets_mouse) -->
+<!-- ``` -->
+
+
 ```{r}
-known_genes = unique(all_results[[1]]$GeneSymbol)
+custom_gene_sets_human <- gmtPathways("../../Data/External/GeneSets/human_custom_geneset_2025-11-28.gmt" )
+custom_gene_sets_mouse <- gmtPathways("../../Data/External/GeneSets/mouse_custom_geneset_2025-11-28.gmt" )
 
-custom_gene_sets_human = list()
-
-beta_cat_genes = as.data.frame(read_excel("../../Data/External/GeneSets/Wnt target H2014 list.xls", sheet = 1, col_names = F))
-custom_gene_sets_human[["Herbst_et_al_Beta_catenin_targets"]] = unique(beta_cat_genes[, 1])
-
-
-########################################################################################
-custom_gene_sets_mouse = list()
-
-spem_sig = read.table("../../Data/External/Nozaki_et_al_2008/SPEM_signature.txt", sep="\t", header=T, stringsAsFactors = F)
-custom_gene_sets_mouse[["Nozaki_SPEM_up"]] = subset(spem_sig, direction == "Up" & !is.na(GeneSymbol))$GeneSymbol
-custom_gene_sets_mouse[["Nozaki_SPEM_down"]] = subset(spem_sig, direction == "Down" & !is.na(GeneSymbol))$GeneSymbol
-
-tmp = read.table("../../Data/External/GeneSets/Supp_Table_S3_GE_combined_SC_Signature.txt", sep="\t", header=T, stringsAsFactors = F)
-custom_gene_sets_mouse[["Lgr5_SC_Signature_Munoz"]] = unique(tmp$GeneSymbol)
-
-tmp = as.data.frame(read_excel("../../Data/External/GeneSets/Barker2010_Stomach/antral lgr5 signature from barker 2010.xls",sheet=1))
-custom_gene_sets_mouse[["Barker_Antral_SC"]] = unique(tmp[2:nrow(tmp),1])
-
-tmp = as.data.frame(read_excel("../../Data/External/GeneSets/Gregorieff_et_al/41586_2015_BFnature15382_MOESM27_ESM_Supp_Table_1.xlsx", sheet = 1))
-
-custom_gene_sets_mouse[["Gregorieff_Yap_comb.FC_up"]] = subset(tmp, Fold_log2 > 1 )$Gene_Symbol
-custom_gene_sets_mouse[["Gregorieff_Yap_comb.FC_down"]] = subset(tmp, Fold_log2 < -1 )$Gene_Symbol
-
-custom_gene_sets_mouse[["Gregorieff_Yap_KO_up"]] = subset(tmp, Yap_KO_log2FC > 1 )$Gene_Symbol
-custom_gene_sets_mouse[["Gregorieff_Yap_KO_down"]] = subset(tmp, Yap_KO_log2FC < -1 )$Gene_Symbol
-
-custom_gene_sets_mouse[["Gregorieff_Yap_Tg_up"]] = subset(tmp, Yap_TG_log2FC > 1 )$Gene_Symbol
-custom_gene_sets_mouse[["Gregorieff_Yap_Tg_down"]] = subset(tmp, Yap_TG_log2FC < -1 )$Gene_Symbol
-
-
-tmp = read.table("../../Data/External/Yui_et_al_CSC_2018/Colitis_vs_control/DGE_Colitis_vs_control.txt", sep="\t", header=T, stringsAsFactors = F)
-
-custom_gene_sets_mouse[["Yui_DSS_colitis_vs_control_up"]] = subset(tmp, logFC > 1 & adj.P.Val < 0.05)$SYMBOL
-custom_gene_sets_mouse[["Yui_DSS_colitis_vs_control_down"]] = subset(tmp, logFC < -1 & adj.P.Val < 0.05)$SYMBOL
-
-
-tmp = read.table("../../Data/External/Yui_et_al_CSC_2018/Fetal_Adult/DGE_Fetal_vs_Adult.txt", sep="\t", header=T, stringsAsFactors = F)
-
-custom_gene_sets_mouse[["Yui_Fetal_vs_adult_up"]] = subset(tmp, logFC > 1 & adj.P.Val < 0.05)$SYMBOL
-custom_gene_sets_mouse[["Yui_Fetal_vs_adult_down"]] = subset(tmp, logFC < -1 & adj.P.Val < 0.05)$SYMBOL
-
-
+gset_collections_human[["CUSTOM_HUMAN"]] = custom_gene_sets_human
 gset_collections_mouse = list(CUSTOM_MOUSE=custom_gene_sets_mouse)
+
+names(custom_gene_sets_human)
+names(custom_gene_sets_mouse)
 ```
 
 ## fGSEA analysis 

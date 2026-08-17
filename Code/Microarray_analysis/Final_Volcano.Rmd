@@ -49,8 +49,7 @@ The raw p-value threshold is 0.001. We only keep the probe with the significant 
 all_target_conditions = names(all_results)
 par(mfrow=c(1,1), mar=c(8,4,4,2))
 
-sel_genes = "Cxcl2,Cxcl10,S100a8,Cxcl6,Ccl20,Il1b,S100a9,Il1a,Il6,Ccl2,C4b,C3" |> strsplit(",") |> unlist()
-
+sel_genes = "Cxcl1,Cxcl3,Cxcl10,Ccl20,Il1b,Il1a,Ccl2,Cxcl5" |> strsplit(",") |> unlist()
 
 get_max_fc <- function(x) {
   tmp <- x
