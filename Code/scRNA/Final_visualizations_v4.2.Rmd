@@ -100,8 +100,8 @@ table(scData.combined$cluster_label |> droplevels(), scData.combined$group_label
 ```
 
 ```{r}
-de_bmp <- readRDS(file.path(result_folder, "PseudoBulk_DGE_Each_cluster_Axin2CreErt2-Bmpr1a_KO_vs_WT_Epi_only_v4.2_CCadj.rds"))
-de_hpy <- readRDS(file.path(result_folder, "PseudoBulk_DGE_Each_cluster_Col1a2CreErt2-Il1r1_Hpy_vs_Uninf_Epi_only_v4.2_CCadj.rds"))
+de_bmp <- readRDS(file.path(data_storage_folder, "PseudoBulk_DGE_Each_cluster_Axin2CreErt2-Bmpr1a_KO_vs_WT_Epi_only_v4.2_CCadj.rds"))
+de_hpy <- readRDS(file.path(data_storage_folder, "PseudoBulk_DGE_Each_cluster_Col1a2CreErt2-Il1r1_Hpy_vs_Uninf_Epi_only_v4.2_CCadj.rds"))
 
 de_res_bmp <- mapply(function(x,n) {x$comparison <- n; x}, de_bmp, names(de_bmp), SIMPLIFY=F) |> do.call(rbind, args = _)
 de_res_hpy <- mapply(function(x,n) {x$comparison <- n; x}, de_hpy, names(de_hpy), SIMPLIFY=F) |> do.call(rbind, args = _)

@@ -54,7 +54,7 @@ library(future)
 options("future.globals.maxSize"=2**33)
 plan("multisession", workers = 8)
 
-rerun_dge_analyses = F
+rerun_dge_analyses = T
 ```
 
 

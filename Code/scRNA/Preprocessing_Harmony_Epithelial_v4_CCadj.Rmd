@@ -16,7 +16,6 @@ date: "`r format(Sys.time(), '%d %B, %Y %H:%M:%S')`"
 
 ```{r, message=FALSE}
 library(Seurat)
-#library(SeuratDisk)
 library(ggplot2)
 
 library(readxl)
@@ -47,7 +46,7 @@ set.seed(20230829)
 We keep only cells from epithelial cells that were not marked as doublets. 
 
 ```{r}
-reload_data = F
+reload_data = T
 if(reload_data) {
   load(file.path(data_storage_folder, "All_Filtered_scData.Rdata"))
   

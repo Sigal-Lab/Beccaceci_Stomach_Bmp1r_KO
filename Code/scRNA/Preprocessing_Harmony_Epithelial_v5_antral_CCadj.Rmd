@@ -58,9 +58,8 @@ if(reload_data) {
   good_cells <- subset(meta, cluster_type=="Epithelial" & doublet=="singlet" & !grepl("decaying", cluster_label, ignore.case = T))
   all_ge_data_filtered <- subset(all_ge_data_filtered, cells = rownames(good_cells))
   
-  
   meta2 <- readRDS(file.path(data_storage_folder, "Giulia_Il1r1_Bmpr1a_Harmony_epi_Metadata_v4_CCadj.rds"))
-  all_ge_data_filtered@meta.data <- meta2[Cells(all_ge_data_filtered),]
+  all_ge_data_filtered@meta.data <- meta2[match(Cells(all_ge_data_filtered),rownames(meta2)), ]
 
   tmp <- NormalizeData(object = all_ge_data_filtered, normalization.method = "LogNormalize", scale.factor = 1e4)
   tmp <- JoinLayers(tmp)
@@ -84,7 +83,7 @@ if(reload_data) {
   table(all_ge_data_filtered$cluster_label, all_ge_data_filtered$sampleID)
 }  
 ```
-
+q
 
 # Cell Cycle estimation
 
